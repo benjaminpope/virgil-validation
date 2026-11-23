@@ -33,4 +33,17 @@ virgil fits the apparent sky, so the primary-beam-corrected Band 7 reference is 
 
 ## Results
 
-Not yet run on the cluster. The job is `dsharp` in ozstar_scripts; the plots and statistics will be added here once the fits are back.
+All six fits ran on OzSTAR (virgil `09b2685`, vv `0542235`; 20 000 steps each, 5 mas pixels, 30 mas taper). **None converged**: every run stopped at its step limit without meeting the C8 criterion, so the numbers below are the optimiser state at that point.
+
+Central 2 arcsec, virgil convolved with the released beam against the public image (Band 7 reference primary-beam corrected, multiplied by the primary beam first; Band 6 and the DSHARP images compared as released):
+
+| Target | correlation | flux ratio | peak ratio | rms(diff) / peak |
+|---|---|---|---|---|
+| IM Lup | 0.994 | 0.945 | 0.983 | 0.0026 |
+| HL Tau B6 | 0.995 | 0.991 | 0.960 | 0.0031 |
+| HL Tau B7 | 0.990 | 0.983 | 0.915 | 0.0046 |
+| HD 163296 | 0.996 | 0.977 | 0.954 | 0.0070 |
+| RU Lup | 0.947 | 1.025 | 0.699 | 0.0073 |
+| AS 209 | 0.980 | 0.997 | 1.155 | 0.0115 |
+
+RU Lup and AS 209 differ most, in the central pixels (RU Lup's hidden image also has dead pixels, so treat it as an optimiser artefact). The released HL Tau weights are about 2000 times too large in variance (fitted error scale about 47), so the HL Tau raw chi² per 2N (about 2300) is not a fit quality; with the free scale it is 1.00. The side-by-side page (`scripts/dsharp_report.py`) shows images, profiles, metadata and these caveats.

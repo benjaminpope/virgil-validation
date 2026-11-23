@@ -1,12 +1,32 @@
 {
+ "https://almascience.eso.org/almadata/lp/DSHARP/images/AS209_continuum.fits": {
+  "bytes": 36008640,
+  "file": "AS209_continuum.fits",
+  "sha256": "bdb00aff9b1e649fbb0a22395bdbb8e927051ecd93d19573ac0cb024c38118e3"
+ },
+ "https://almascience.eso.org/almadata/lp/DSHARP/images/HD163296_continuum.fits": {
+  "bytes": 36008640,
+  "file": "HD163296_continuum.fits",
+  "sha256": "af494a44106ff27dcf75b1cb2c37f06858d1d94a0627338612fde9daae673fc5"
+ },
  "https://almascience.eso.org/almadata/lp/DSHARP/images/IMLup_continuum.fits": {
   "bytes": 64010880,
   "file": "IMLup_continuum.fits",
   "sha256": "5d8d78bdc14ded1d41a3dcd99a8c9a92bba51cbf5c07b00151c3e26f8b6b36c8"
  },
+ "https://almascience.eso.org/almadata/lp/DSHARP/images/RULup_continuum.fits": {
+  "bytes": 36008640,
+  "file": "RULup_continuum.fits",
+  "sha256": "9c80d75f90172ee77611dfc18347d490ffc1d1356408273cd0a6f1d8b481c9d4"
+ },
  "https://almascience.eso.org/almadata/sciver/HLTauBand6/HLTau_Band6_ReferenceImages.tgz": {
   "bytes": 9511237,
   "file": "HLTau_Band6_ReferenceImages.tgz",
   "sha256": "4c757236fdee167ea0457588a048199dca747fd9a8b3888ad34e74adc01cc18d"
+ },
+ "https://almascience.eso.org/almadata/sciver/HLTauBand7/HLTau_Band7_ReferenceImages.tgz": {
+  "bytes": 15609040,
+  "file": "HLTau_Band7_ReferenceImages.tgz",
+  "sha256": "53d13b540392f28af03fa222783bf93dbd4ce9e9964b65a8a6167f06e2c7490a"
  }
 }
