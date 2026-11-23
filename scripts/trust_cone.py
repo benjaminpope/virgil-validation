@@ -97,29 +97,52 @@ def _name(node):
     return node.get("label") or node["id"]
 
 
+def _severity(verdict):
+    """0 failing, 1 known bug, 2 a cause of its own (not checked, partly, convention), 3 merely relies on another."""
+    return {"failing": 0, "bug": 1}.get(verdict, 3 if verdict.startswith("relies") else 2)
+
+
 def _unverified(model, c, exclude=()):
-    """The parts of the cone that are not verified: the ones with a cause of their own first (a bug, no check, ...),
-    those that merely rely on another after them, each closest to the ground first."""
+    """The parts of the cone that are not verified, the most serious first (a failing check, a known bug, then a part
+    with a cause of its own, then those that merely rely on another), each closest to the ground first."""
     nodes = model["nodes"]
     bad = [n for n in c["nodes"] if nodes[n]["verdict"] != "verified" and n not in exclude]
-    return sorted(bad, key=lambda n: (nodes[n]["verdict"].startswith("relies"), c["nodes"][n], _name(nodes[n])))
+    return sorted(bad, key=lambda n: (_severity(nodes[n]["verdict"]), c["nodes"][n], _name(nodes[n])))
 
 
-def _reliance(model, c, exclude=()):
-    """The tail of "It relies on N parts, ...": "all verified", or "of which K are not yet verified (...)"."""
+def _extras(model, c, ids):
+    """Parts named in ``ids`` (a part's ``because``, a pipeline's ``unverified``) that are not in the cone and are not
+    verified: reference code its checks go through (``via``), which the cone's ``depends`` walk does not reach."""
     nodes = model["nodes"]
-    bad = _unverified(model, c, exclude)
-    if not bad:
-        return "all verified"
+    out = [i for i in dict.fromkeys(ids) if i not in c["nodes"] and i in nodes and nodes[i]["verdict"] != "verified"]
+    return sorted(out, key=lambda n: (_severity(nodes[n]["verdict"]), _name(nodes[n])))
+
+
+def _named(model, parts):
+    """"label: reason" for the first LISTED parts, then "; and M more"."""
+    nodes = model["nodes"]
     named = []
-    for n in bad[:LISTED]:
+    for n in parts[:LISTED]:
         why = SHORT.get(nodes[n]["verdict"], nodes[n]["verdict"])
         if nodes[n].get("findings"):
             why += ", " + " ".join(nodes[n]["findings"])
         named.append(f"{_name(nodes[n])}: {why}")
-    more = len(bad) - len(named)
-    return (f"of which {len(bad)} {'is' if len(bad) == 1 else 'are'} not yet verified ({'; '.join(named)}"
-            + (f"; and {more} more" if more else "") + ")")
+    more = len(parts) - len(named)
+    return "; ".join(named) + (f"; and {more} more" if more else "")
+
+
+def _reliance(model, c, exclude=()):
+    """The tail of "It relies on N parts, ...": "all verified", or "of which K are not yet verified (...)"."""
+    bad = _unverified(model, c, exclude)
+    if not bad:
+        return "all verified"
+    return f"of which {len(bad)} {'is' if len(bad) == 1 else 'are'} not yet verified ({_named(model, bad)})"
+
+
+def _via(model, extras):
+    n = len(extras)
+    return (f"Its checks also go through {n} reference {'part' if n == 1 else 'parts'} that "
+            f"{'is' if n == 1 else 'are'} not yet verified ({_named(model, extras)}).")
 
 
 def _ground(model, c):
@@ -137,8 +160,12 @@ def sentence(model, id, root_names=None):
         out = [f"The pipeline “{p['title']}” runs {_plural(len(c['top']), 'step')} end to end"
                + (f" on {p['data']} data." if p.get("data") else "."),
                PIPELINE_STATE.get(p["status"], f"Its state is {p['status']}.")]
+        extras = _extras(model, c, p.get("unverified", []))
         if c["nodes"]:
             out.append(f"Its steps rest on {_plural(len(c['nodes']), 'part')} in all, " + _reliance(model, c) + ".")
+        if extras:
+            out.append(_via(model, extras))
+        if c["nodes"]:
             out.append(_ground(model, c))
         return " ".join(out)
     n = nodes[id]
@@ -150,11 +177,16 @@ def sentence(model, id, root_names=None):
         out.append(f"Its own checks agree with {_list(strong)}.")
     elif n["verdict"] != "unchecked":
         out.append("None of its checks counts yet as agreement with a root.")
+    extras = _extras(model, c, [b["id"] for b in n.get("because", [])])
     if len(c["nodes"]) == 1:
-        out.append("It relies on no other part, so it stands directly on the roots.")
+        out.append("It relies on no other part."
+                   if extras else "It relies on no other part, so it stands directly on the roots.")
     else:
         out.append(f"It relies on {_plural(len(c['nodes']) - 1, 'part')}, "
                    + _reliance(model, c, exclude=(id,)) + ".")
+    if extras:
+        out.append(_via(model, extras))
+    if len(c["nodes"]) > 1:
         out.append(_ground(model, c))
     return " ".join(out)
 

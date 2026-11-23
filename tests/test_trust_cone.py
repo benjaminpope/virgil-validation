@@ -11,9 +11,10 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "scripts"))
 import trust_cone as tc  # noqa: E402
 
 
-def node(name, verdict, depends=(), depth=0, strong=(), findings=()):
+def node(name, verdict, depends=(), depth=0, strong=(), findings=(), because=()):
     return {"id": name, "label": name, "verdict": verdict, "depends": list(depends), "depth": depth,
-            "strong": list(strong), "weak": [], "findings": list(findings)}
+            "strong": list(strong), "weak": [], "findings": list(findings),
+            "because": [{"id": b, "findings": [], "status": "unchecked"} for b in because]}
 
 
 NODES = [
@@ -23,12 +24,17 @@ NODES = [
     node("buggy", "bug", ["ground2"], 1, ["mathematics"], ["F27"]),
     node("top", "relies-unverified", ["mid", "buggy"], 2, ["mathematics"]),
     node("loneliest", "unchecked"),
+    # reaches no other part through `depends`, but its checks go through reference code that is not verified (`via`)
+    node("viaonly", "relies-unverified", strong=["mathematics"], because=["ground2", "buggy"]),
+    node("viamix", "relies-unverified", ["mid"], 2, ["mathematics"], because=["mid", "ground2"]),
     # a cycle that the engine would not build, to check that the walk ends
     node("a", "partly", ["b"], 1), node("b", "partly", ["a"], 1),
 ]
 MODEL = {
     "nodes": {n["id"]: n for n in NODES},
     "pipelines": [
+        {"id": "viapipe", "title": "Via", "data": "simulated", "status": "passes", "steps": ["mid"],
+         "unverified": ["ground2", "mid"]},
         {"id": "pipe", "title": "Example", "data": "simulated", "status": "passes", "steps": ["mid", "buggy", "gone"]},
         {"id": "top", "title": "Shadowed by the part", "status": "planned", "steps": ["ground"]},
     ],
@@ -76,7 +82,7 @@ def test_sentence_for_a_part_with_unverified_parts_beneath():
     s = tc.sentence(MODEL, "top", NAMES)
     assert s.startswith("top works, but relies on a part that is not yet verified. ")
     assert "Its own checks agree with mathematics." in s
-    assert "It relies on 4 parts, of which 2 are not yet verified (ground2: not yet checked; buggy: known bug, F27)." in s
+    assert "It relies on 4 parts, of which 2 are not yet verified (buggy: known bug, F27; ground2: not yet checked)." in s
     assert s.endswith("Its cone reaches the ground in 2 parts.")
 
 
@@ -102,7 +108,7 @@ def test_sentence_for_a_pipeline():
     s = tc.sentence(MODEL, "pipe", NAMES)
     assert s == ("The pipeline “Example” runs 2 steps end to end on simulated data. "
                  "Its end-to-end check passes, but not every step is verified yet. "
-                 "Its steps rest on 4 parts in all, of which 2 are not yet verified (ground2: not yet checked; buggy: known bug, F27). "
+                 "Its steps rest on 4 parts in all, of which 2 are not yet verified (buggy: known bug, F27; ground2: not yet checked). "
                  "Its cone reaches the ground in 2 parts.")
 
 
@@ -118,10 +124,39 @@ def test_embed_carries_every_cone_and_sentence_once():
                        {"id": "self-consistency", "class": "self-consistency"}]}
     e = tc.embed(MODEL, roots, NAMES, alias={"frap": "frank"})
     assert e["order"] == sorted(MODEL["nodes"])
-    assert set(e["cones"]) == set(e["sentences"]) == set(MODEL["nodes"]) | {"pipe"}
+    assert set(e["cones"]) == set(e["sentences"]) == set(MODEL["nodes"]) | {"pipe", "viapipe"}
     idx = lambda ids: [e["order"][i] for i in ids]  # noqa: E731
     assert idx(e["cones"]["top"])[0] == "top" and set(idx(e["cones"]["top"])) == set(tc.cone(MODEL, "top")["nodes"])
     assert idx(e["cones"]["pipe"])[:2] == ["mid", "buggy"]  # a pipeline's steps come first, in order
     assert e["letters"] == {"mathematics": "M", "frank": "C", "frap": "C"}
     assert e["pipelines"]["pipe"]["steps"] == ["mid", "buggy", "gone"]
     assert e["sentences"]["top"] == tc.sentence(MODEL, "top", NAMES)
+
+
+def test_a_part_that_relies_through_via_does_not_claim_to_stand_on_the_roots():
+    s = tc.sentence(MODEL, "viaonly", NAMES)
+    assert s.startswith("viaonly works, but relies on a part that is not yet verified. ")
+    assert "stands directly on the roots" not in s and "all verified" not in s
+    assert s.endswith("It relies on no other part. Its checks also go through 2 reference parts that are not yet verified "
+                      "(buggy: known bug, F27; ground2: not yet checked).")
+
+
+def test_via_parts_are_added_to_a_cone_that_is_otherwise_all_verified():
+    s = tc.sentence(MODEL, "viamix", NAMES)
+    assert "It relies on 2 parts, all verified. Its checks also go through 1 reference part that is not yet verified (ground2: not yet checked)." in s
+    assert "mid" not in s.split("go through")[1]  # a part already in the cone is not named twice
+
+
+def test_a_pipeline_names_the_untrusted_references_outside_its_steps():
+    s = tc.sentence(MODEL, "viapipe", NAMES)
+    assert "Its steps rest on 2 parts in all, all verified. Its checks also go through 1 reference part that is not yet verified (ground2: not yet checked)." in s
+
+
+def test_the_most_serious_unverified_parts_are_named_first():
+    deep = [node("deepbug", "bug", ["g1"], 3, findings=["F1"]), node("g1", "unchecked", depth=0),
+            node("g2", "unchecked", depth=0), node("g3", "unchecked", depth=0), node("g4", "unchecked", depth=0),
+            node("failer", "failing", ["g2"], 2),
+            node("root", "relies", ["deepbug", "failer", "g3", "g4"], 4)]
+    m = {"nodes": {n["id"]: n for n in deep}, "pipelines": []}
+    s = tc.sentence(m, "root")
+    assert "(failer: check failing; deepbug: known bug, F1; g1: not yet checked; and 3 more)" in s
