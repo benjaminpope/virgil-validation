@@ -46,7 +46,7 @@ def test_select_missing_exclude_shard(tmp_path, monkeypatch):
     log = tmp_path / "log.jsonl"
     log.write_text("\n".join(json.dumps({"key": k, "status": "not_run"}) for k in keys[:6]) + "\n"
                    + json.dumps({"key": keys[6], "proc": 1}) + "\n")
-    ns = dict(missing_from=str(log), exclude_case=[], shard=None)
+    ns = dict(missing_from=str(log), exclude_case=[], add_case=[], shard=None)
     got = matrix.select(specs, argparse.Namespace(**ns))
     assert {s.key for s in got} == set(keys[:6])                      # only the not_run keys, not the ones that ran
     ns["exclude_case"] = [got[0].case]

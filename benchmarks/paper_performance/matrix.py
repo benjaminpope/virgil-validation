@@ -512,7 +512,7 @@ def select(specs, a):
     a case is kept), assigned longest first to the least loaded shard, so the split is deterministic for a given N."""
     if a.missing_from:
         miss = {json.loads(l)["key"] for l in Path(a.missing_from).read_text().splitlines() if l.strip() and json.loads(l).get("status") == "not_run"}
-        specs = [x for x in specs if x.key in miss]
+        specs = [x for x in specs if x.key in miss or x.case in (a.add_case or [])]
     if a.exclude_case:
         specs = [x for x in specs if x.case not in a.exclude_case]
     if common.DEVICE == "gpu":      # the GPU arm: virgil rows only, one thread, no gates or other codes
@@ -544,6 +544,7 @@ def main():
                     "stage runs the FULL matrix with --run-id r2)")
     ap.add_argument("--budget-h", type=float, default=None, help="wall-clock cap in hours (default 7; the rerun uses 4)")
     ap.add_argument("--missing-from", default=None, help="a matrix log: run only the specs it records as not_run (the resumable rerun of the budget-cut groups)")
+    ap.add_argument("--add-case", nargs="*", default=[], help="with --missing-from: also rerun ALL specs of these cases (O-A-real: its matched rows ran but errored)")
     ap.add_argument("--exclude-case", nargs="*", default=[], help="drop these case ids (O-A-real while its init failure is debugged)")
     ap.add_argument("--shard", default=None, help="K/N: this array task takes the K-th of N balanced shards of whole blocks (cases of one task), so each node runs a share of the rows")
     ap.add_argument("--only", nargs="*", default=None, help="TEST ONLY: run just the specs whose key contains one of these")

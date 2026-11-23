@@ -37,3 +37,24 @@ def test_cases_yaml_parses():
     c = yaml.safe_load((HERE / "cases.yml").read_text())
     assert set(c["cases"]) == {"O-A-sim", "O-A-sim-pulls", "O-A-real", "O-B-sim"}
     assert c["code_versions"]["octofitter"].startswith("9.0.0")
+
+
+def test_oareal_starts_inside_prior_and_init_finite():
+    """O-A-real: every start has lo < P < hi (the +-1 sigma start window, not the two prior bounds) and numpyro can initialise from it."""
+    import numpy as np
+
+    import run_virgil as rv
+    from virgil.likelihood import chain_init_params
+    from virgil.orbits import period_grid, starting_orbits
+
+    info = rv.case_info("O-A-real")
+    lo, hi = info["p_range"]
+    ds = rv.read_astrometry(rv.DATA / "astrometry_O-A-real.csv")
+    pos = rv.positions_from(ds, info["t_ref"])
+    starts = starting_orbits(pos, period_grid(ds["epoch"], *info["p_start"]), n_best=4)
+    for phase in ("M0", "theta"):
+        model, _, _ = rv.level_a_model(pos, info["plx"], info["t_ref"], info["p_prior"], phase)
+        vals = [rv.start_values(o, info["plx"], phase, info["t_ref"], info["p_range"]) for o, _ in starts]
+        assert all(lo < v["P"] < hi for v in vals)
+        init = chain_init_params(model, vals)
+        assert all(np.all(np.isfinite(np.asarray(x))) for x in init.values())

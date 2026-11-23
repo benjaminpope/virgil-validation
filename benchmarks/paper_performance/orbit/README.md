@@ -56,3 +56,5 @@ quantities, sd ratios 0.99-1.10, KS <= 0.062, R-hat <= 1.014, no divergences. No
 - `octofit_pigeons` has no matched-draw equivalent: the native Level B Octofitter row uses `--pigeons-rounds` (default 8, untested at full length).
 - Full-matrix estimate (both codes, all configs, 3 repeats): 90-120 min, dominated by Level B and the 20 pull seeds.
 - Octofitter draws go to `chain<k>.csv` (32 columns incl. sampler internals); `compare.py` reads them.
+
+virgil starts: Level A chains start from `p_start` (the prior window; +-1 sigma around the published period for O-A-real, whose +-5 sigma prior window is only 0.01 d), see CHANGES.md 2026-11-23.

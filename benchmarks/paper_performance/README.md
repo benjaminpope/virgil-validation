@@ -91,10 +91,10 @@ Self-test of the scorers, tests, and a dummy row (each under `pyquick`):
 
 ## Follow-up stages (rerun, GPU arm, profiling)
 
-* **Rerun of the budget-cut rows.** `matrix.py --run --run-id r2 --missing-from <r2 log> --exclude-case O-A-real --shard K/N`
+* **Rerun of the budget-cut rows.** `matrix.py --run --run-id r2 --missing-from <r2 log> --shard K/N [--add-case O-A-real]`
   runs only the specs the r2 log records as `not_run`, split into `N` balanced shards of whole blocks (per-row estimates;
   each shard writes `matrix_log_r2_s<K>.jsonl` and `DONE_r2_s<K>`). The rows replace the `not_run` rows of the same name.
-  O-A-real is excluded until its start failure is fixed (its rows stay `not_run`).
+  `--add-case C` reruns every spec of a case (O-A-real: its virgil rows errored in r2 on a start-window bug, fixed in `orbit/run_virgil.py`).
 * **GPU arm.** `BENCH_DEVICE=gpu` (set by the OzSTAR GPU stage) keeps only virgil's one-thread specs, runs them with
   `JAX_PLATFORMS=cuda` and records `settings.device = "gpu"` and `settings.gpu` (the model). The GPU rows never enter the CPU
   tables: `summarise.py` writes them to `results/gpu_results.csv` beside the CPU virgil and other-code warm times of the same group.

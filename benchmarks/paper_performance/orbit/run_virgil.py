@@ -46,8 +46,11 @@ def case_info(case):
     if case == "O-A-real":
         lo, hi = REAL["P_mean"] - 5 * REAL["P_sd"], REAL["P_mean"] + 5 * REAL["P_sd"]
         return dict(t_ref=T_REF_REAL, plx=REAL["plx"], p_prior=("tnormal", REAL["P_mean"], REAL["P_sd"], lo, hi),
-                    p_range=(lo, hi))
-    return dict(t_ref=md.T_REF, plx=SIM_PLX, p_prior=("uniform",) + SIM_P_RANGE, p_range=SIM_P_RANGE)
+                    p_range=(lo, hi),
+                    # the start window: +-1 sigma. period_grid over the whole +-5 sigma prior window (0.01 d) returns only its two
+                    # endpoints, which are infinite in the unconstrained space; the 5-sigma tails also diverge (PR 275, O-A-real)
+                    p_start=(REAL["P_mean"] - REAL["P_sd"], REAL["P_mean"] + REAL["P_sd"]))
+    return dict(t_ref=md.T_REF, plx=SIM_PLX, p_prior=("uniform",) + SIM_P_RANGE, p_range=SIM_P_RANGE, p_start=SIM_P_RANGE)
 
 
 def read_astrometry(path):
@@ -318,7 +321,7 @@ def main():
         t0 = time.perf_counter()
         if kind == "A":
             pos = positions_from(ds[1], t_ref)
-            periods = period_grid(ds[1]["epoch"], *info["p_range"])
+            periods = period_grid(ds[1]["epoch"], *info["p_start"])
             starts = starting_orbits(pos, periods, n_best=a.chains)
             vals = [start_values(o, plx, phase, t_ref, info["p_range"]) for o, _ in starts]
             while len(vals) < a.chains:
@@ -359,7 +362,7 @@ def main():
     settings = {"config": a.config, "phase_parameter": phase, "warmup": a.warmup, "draws": a.draws, "chains": a.chains,
                 "chain_method": CHAIN_METHOD, "target_accept": 0.8, "max_tree_depth": a.max_tree_depth,
                 "mass_matrix": "dense (matches Octofitter: AdvancedHMC DenseEuclideanMetric, sampling.jl)", "case": a.case, "versions": ver,
-                "init": "starting_orbits (period_grid over the prior window, n_best = chains)" if kind == "A" else
+                "init": "starting_orbits (period_grid over p_start (the prior window; +-1 sigma for O-A-real), n_best = chains)" if kind == "A" else
                         "numpyro default (init_to_uniform)",
                 "closure_phase_noise": "independent (cp_noise=None; von Mises residual)" if kind == "B" else None}
     common.emit_inner(sw, n_data=n_data, n_param=len(priors) + (0), iterations={

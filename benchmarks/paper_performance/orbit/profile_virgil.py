@@ -74,7 +74,7 @@ def main():
         ds = rv.read_astrometry(path)
         pos = rv.positions_from(ds, t_ref)
         model, priors, _ = rv.level_a_model(pos, plx, t_ref, info["p_prior"], phase)
-        starts = starting_orbits(pos, period_grid(ds["epoch"], *info["p_range"]), n_best=a.chains)
+        starts = starting_orbits(pos, period_grid(ds["epoch"], *info["p_start"]), n_best=a.chains)
         vals = [rv.start_values(o, plx, phase, t_ref, info["p_range"]) for o, _ in starts]
         while len(vals) < a.chains:
             vals.append(vals[-1])
