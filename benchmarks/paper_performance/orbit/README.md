@@ -57,4 +57,45 @@ quantities, sd ratios 0.99-1.10, KS <= 0.062, R-hat <= 1.014, no divergences. No
 - Full-matrix estimate (both codes, all configs, 3 repeats): 90-120 min, dominated by Level B and the 20 pull seeds.
 - Octofitter draws go to `chain<k>.csv` (32 columns incl. sampler internals); `compare.py` reads them.
 
-virgil starts: Level A chains start from `p_start` (the prior window; +-1 sigma around the published period for O-A-real, whose +-5 sigma prior window is only 0.01 d), see CHANGES.md 2026-11-23.
+## Chain starts (CHANGES.md 2026-11-23)
+Both codes start from their own search of the prior volume, with no truth-centred or hand-set values; `t_init` times it.
+
+virgil (`run_virgil.py`, "chain starts"), the same rule for every case, level and config:
+1. Period window: the central [q, 1-q] quantile interval of the period prior, q = 1e-3 (`prior_interval`). O-A-real:
+   10.655361-10.661541 d (+-3.09 sigma of the +-5 sigma prior); simulated cases: 150.1-249.9 d.
+2. Trial periods (`trial_periods`): the frequency midpoints of virgil's `period_grid` cells over the window, so no trial
+   is an end point; with fewer cells than chains the window is cut into one cell per chain. O-A-real (window 0.14 of a
+   phase-coherence step): 4 trials; O-A-sim and pulls: 6; O-B-sim: 5.
+3. Level A: `starting_orbits` over those periods, the `chains` best grid orbits. Level B: `epoch_positions` ->
+   `starting_orbits` (200 best) -> `rank_orbits` on the visibilities -> `chain_starts`; flux = median of the per-epoch fits.
+4. Every scalar start is clipped into the [q, 1-q] interval of its own prior (`start_values`), so it is strictly inside
+   the support and within |logit(q)| = 6.9 of the centre in NUTS's coordinates. The angles start as unit vectors.
+   `check_starts` raises, naming the site, if a start is on or outside a support or lacks a site.
+5. No random numbers: the starts depend on the data and the priors only (`--seed` does not change them).
+6. Recorded per row: `settings.init` (the rule and the realised numbers) and `settings.init_detail` (window, trial
+   periods, start periods, start chi2 for Level A, chains clipped per site).
+
+Octofitter (`run_octofitter.jl`): `initialize!(Xoshiro(100 seed), model)`, its documented route: prior draws -> global
+optimisation -> Pathfinder, 1000 draws of the Pathfinder approximation kept as starting points in its unconstrained space
+(so inside every prior's support); each chain starts at one of them, drawn with the chain's generator. Recorded in
+`settings.init` and `settings.init_detail` (number of points, range and median of their periods).
+O-A-real matched, seed 1 (local 2 + 2 smoke, identical in two runs): 1000 points, periods 10.656777-10.658860 d
+(-1.67 to +0.41 sigma), median 10.658061 d; virgil's four starts span -2.32 to +2.32 sigma.
+
+Differences that remain, by design ("each code's own route", `cases.yml`):
+- Octofitter's starts are draws around an optimised mode; virgil's are the best points of a grid, not optimised
+  (start chi2 of 120-240 for 24 numbers on O-A-real, 1500-2100 for 20 on O-A-sim). virgil's warm-up therefore begins
+  further from the typical set.
+- Octofitter sets the initial dense metric from the covariance of its starting points (`src/sampling.jl`); virgil's
+  NUTS starts from the identity and adapts during warm-up.
+- Octofitter's starts are random given the seed, and reproducible only on the same machine and package versions
+  (its docstring); virgil's are deterministic.
+- Both are counted in `t_init`, outside `t_cold` and `t_warm`; their effect on warm-up is inside `t_cold` and `t_warm`.
+
+Starts per case (4 chains, both phase parameters; `test_orbit.py` checks every one, all 20 pull seeds included):
+| case | start P (d) | prior support of P | -log density at the starts | clips |
+|---|---|---|---|---|
+| O-A-real | 10.659223, 10.657678, 10.660768, 10.656133 | (10.653451, 10.663451) | -23.9 to 36.6 | none |
+| O-A-sim | 195.687 (all four) | (150, 250) | 726 to 1014 | none |
+| O-A-sim-pulls, 20 seeds | 195.687 (all) | (150, 250) | 688 to 1158 | none |
+| O-B-sim | 208.343 (three), 187.550 | (150, 250) | 2.3e4 to 1.2e5 | none |

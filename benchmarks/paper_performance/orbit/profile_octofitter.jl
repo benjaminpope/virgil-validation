@@ -23,7 +23,7 @@ function profile_main()
     ds = 0                                     # O-A-sim-pulls: seed 00, as in profile_virgil.py
     sys = build_system(LEVEL == "A" ? (A_, b) -> level_a(A_, b, ds) : level_b)
     model = Octofitter.LogDensityModel(sys)
-    initialize!(model; verbosity = 0)
+    initialize!(Random.Xoshiro(100), model; verbosity = 0)      # seeded, as run_octofitter.jl with --seed 1
     D = model.D
     rng = Random.Xoshiro(1)
     # a point in the sampler's own (unconstrained) space: the optimiser's start if it is finite, else a small random one

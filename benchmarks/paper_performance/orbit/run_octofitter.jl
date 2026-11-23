@@ -163,15 +163,24 @@ function main()
     t_warm = Float64[]
     chains = nothing
     model = nothing
+    init_detail = Dict()
     for (ids, ds) in enumerate(SEEDS)
         t0 = time_ns()
         sys = build_system(LEVEL == "A" ? (A_, b) -> level_a(A_, b, ds) : level_b)
         model = Octofitter.LogDensityModel(sys)
         t_load += tsec(t0)
-        # initialisation: Octofitter's own route (global optimisation + Pathfinder), no user guesses
+        # initialisation: Octofitter's own route (global optimisation + Pathfinder), no user guesses. Seeded: the default
+        # generator of initialize! is the global one. The chains use seed * 100 + k, k >= 1 (one_call).
         t0 = time_ns()
-        initialize!(model; verbosity = 0)
+        start_chain = initialize!(Random.Xoshiro(seed * 100), model; verbosity = 0)
         t_init += tsec(t0)
+        # the starting points live in Octofitter's unconstrained space, so they are inside every prior's support if finite
+        all(s -> all(isfinite, s), model.starting_points) || error("Octofitter starting points are not all finite")
+        if ids == 1
+            P0 = vec(start_chain[:b_P])
+            init_detail = Dict("n_starting_points" => length(model.starting_points), "start_P_d_range" => [minimum(P0), maximum(P0)],
+                               "start_P_d_median" => sort(P0)[cld(length(P0), 2)])
+        end
         t0 = time_ns()
         ch = one_call(model, seed)
         t_cold += tsec(t0)
@@ -202,6 +211,10 @@ function main()
                            "draws" => draws, "chains" => nch, "chain_method" => "sequential calls", "target_accept" => 0.8,
                            "max_tree_depth" => maxd, "sampler" => use_pigeons ? "octofit_pigeons" : "octofit",
                            "mass_matrix" => "dense (AdvancedHMC DenseEuclideanMetric)",
+                           "init" => "initialize!(Xoshiro(100 seed), model): prior draws -> global optimisation -> Pathfinder, 1000 draws " *
+                                     "of its approximation in the unconstrained space (inside every prior's support); each chain " *
+                                     "starts at one draw (the chain's generator) with the dense metric set from the draws' covariance",
+                           "init_detail" => init_detail,
                            "observing_geometry" => string(CORR), "barycentric_lighttime" => string(CORR),
                            "versions" => Dict("julia" => string(VERSION), "octofitter" => string(pkgversion(Octofitter)))),
         "provenance" => Dict("julia" => string(VERSION)),

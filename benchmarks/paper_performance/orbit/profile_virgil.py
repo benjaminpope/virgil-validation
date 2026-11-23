@@ -63,8 +63,6 @@ def main():
     from numpyro.infer.util import initialize_model
 
     import jaxprof
-    from virgil.likelihood import chain_init_params
-    from virgil.orbits import period_grid, starting_orbits
 
     kind, info = rv.KINDS[a.case], rv.case_info(a.case)
     phase = "M0" if a.config == "matched" else "theta"
@@ -74,15 +72,12 @@ def main():
         ds = rv.read_astrometry(path)
         pos = rv.positions_from(ds, t_ref)
         model, priors, _ = rv.level_a_model(pos, plx, t_ref, info["p_prior"], phase)
-        starts = starting_orbits(pos, period_grid(ds["epoch"], *info["p_start"]), n_best=a.chains)
-        vals = [rv.start_values(o, plx, phase, t_ref, info["p_range"]) for o, _ in starts]
-        while len(vals) < a.chains:
-            vals.append(vals[-1])
-        init = chain_init_params(model, vals[: a.chains])
+        vals, _ = rv.level_a_values(priors, pos, ds["epoch"], plx, phase, t_ref, a.chains)
     else:
         epochs = rv.read_epochs(independent_cp=True)
         model, priors, _ = rv.level_b_model(epochs, plx, t_ref, info["p_prior"], phase)
-        init = rv.level_b_start(model, epochs, plx, t_ref, info, phase, a.chains)
+        vals, _ = rv.level_b_values(priors, epochs, plx, t_ref, phase, a.chains)
+    init = rv.init_params(model, priors, vals, 0)
 
     # one potential (negative log density) function and its gradient, at each chain's start, in unconstrained space
     mi = initialize_model(jax.random.PRNGKey(0), model, dynamic_args=False)      # for the potential function only
