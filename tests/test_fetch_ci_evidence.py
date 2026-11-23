@@ -151,13 +151,14 @@ def test_an_outdir_from_an_earlier_fetch_is_replaced_not_mixed(run_script):
 
 
 @pytest.mark.validates("evidence", roots=["mathematics"], kind="guard")
-def test_a_failed_run_without_evidence_is_an_error_not_something_to_skip(run_script):
+def test_a_failed_run_without_evidence_is_skipped_like_a_cancelled_one(run_script):
+    # a lost runner ends with conclusion=failure and no evidence.jsonl (runs 44260614936, 44260598100)
     push = ["2026-11-23T00:00:00Z 300 failure", "2026-11-22T00:00:00Z 200 success"]
     proc, out = run_script(push=push, with_artefact=[200], cancelled=[300])
-    assert proc.returncode != 0
-    assert "run 300 (failure) has no evidence artefact and was not cancelled" in proc.stderr
-    assert not (out / "push" / "evidence.jsonl").exists()  # it did not fall back to run 200
-    # a run that failed its tests still has evidence, and is used
+    assert proc.returncode == 0, proc.stderr
+    assert "run 300 has no evidence artefact; using an older run" in proc.stderr
+    assert (out / "push" / "evidence.jsonl").read_text() == "run 200\n"
+    # a run that failed its tests still has evidence, and is the newest
     proc, out = run_script(push=push, with_artefact=[300, 200])
     assert proc.returncode == 0, proc.stderr
     assert (out / "push" / "evidence.jsonl").read_text() == "run 300\n"

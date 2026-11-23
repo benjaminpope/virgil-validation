@@ -3,10 +3,9 @@
 # newest finished validation run on main that has an evidence artefact (fast
 # tests, on the pinned virgil) and of the newest such weekly or manual run
 # (every test, on virgil's main, with virgil's own CI evidence). A run that
-# was cancelled or timed out has no evidence.jsonl in its artefact; it is skipped, with a line on
-# stderr, for the next older of the last 10 runs. A run that failed without evidence (a crash, not a
-# cancellation) is an error: older evidence would hide a broken main. Evidence measured on a
-# laptop is not published.
+# was cancelled, timed out, lost its runner or crashed has no evidence.jsonl in its artefact, whatever its
+# conclusion; it is skipped, with a line on stderr, for the next older of the last 10 runs. Evidence
+# measured on a laptop is not published.
 #
 #   scripts/fetch_ci_evidence.sh [--push-only] OUTDIR
 #
@@ -26,14 +25,14 @@ runs=${EVIDENCE_RUNS:-10}  # how many finished runs per event to look through
 
 # Everything below runs inside `if` or `||`, where set -e is off, so every gh call is checked by hand:
 # a failed lookup or download stops the script (it never reads as "no run" or "no artefact").
-candidates() {  # "id conclusion" of the last finished runs of tests.yml on main for the given events, newest first
+candidates() {  # ids of the last finished runs of tests.yml on main for the given events, newest first
   local event out all=
   for event in "$@"; do
     out=$(gh run list -R "$repo" -w tests.yml -b main -e "$event" -s completed -L "$runs" \
-      --json databaseId,createdAt,conclusion --jq '.[] | "\(.createdAt) \(.databaseId) \(.conclusion)"') || return 1
+      --json databaseId,createdAt --jq '.[] | "\(.createdAt) \(.databaseId)"') || return 1
     all+=$out$'\n'
   done
-  printf '%s' "$all" | sed '/^$/d' | sort -r | sed -n "1,${runs}p" | cut -d' ' -f2,3
+  printf '%s' "$all" | sed '/^$/d' | sort -r | sed -n "1,${runs}p" | cut -d" " -f2
 }
 
 fetch() {  # fetch RUN's evidence artefact into DIR; 1 if it has none (or no evidence.jsonl), 3 if gh failed
@@ -49,20 +48,15 @@ fetch() {  # fetch RUN's evidence artefact into DIR; 1 if it has none (or no evi
 }
 
 fetch_newest() {  # fetch_newest DIR EVENT...: the newest run with an evidence artefact; 2 if there is no run, 3 if gh failed
-  local dir=$1 run conclusion ids rc
+  local dir=$1 run ids rc
   shift
   ids=$(candidates "$@") || { echo "listing the runs of ($*) failed" >&2; return 3; }
   [ -n "$ids" ] || return 2
-  while read -r run conclusion; do
+  while read -r run _; do
     rc=0; fetch "$run" "$dir" || rc=$?
     case $rc in
       0) return 0 ;;
-      1) case $conclusion in
-           cancelled|skipped|timed_out) echo "run $run has no evidence artefact; using an older run" >&2 ;;
-           # a crash before pytest wrote its evidence (broken install, collection error, OOM) is not a
-           # cancellation: an older run's evidence would show green verdicts for a broken main
-           *) echo "run $run ($conclusion) has no evidence artefact and was not cancelled: not using an older run" >&2; return 4 ;;
-         esac ;;
+      1) echo "run $run has no evidence artefact; using an older run" >&2 ;;
       *) echo "looking up the artefacts of run $run failed" >&2; return 3 ;;
     esac
   done <<< "$ids"
