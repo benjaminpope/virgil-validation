@@ -14,7 +14,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "fetch_ci_evidence.sh"
 
 # The stub answers the three gh calls the script makes. FAKE_RUNS_<event> holds "createdAt id" lines
-# (what the real call prints after its --jq), FAKE_WITH_ARTEFACT the ids of the runs that have an
+# (what the real call prints after its --jq: createdAt, id, conclusion), FAKE_WITH_ARTEFACT the ids of the runs that have an
 # evidence artefact (FAKE_WITH_EVIDENCE: those whose artefact holds evidence.jsonl; a cancelled run's holds only mem.log); a download writes the run's id into DIR/evidence.jsonl.
 STUB = r"""#!/usr/bin/env bash
 case "$1 $2" in
@@ -66,8 +66,8 @@ def run_script(tmp_path):
     return run
 
 
-PUSH = ["2026-11-23T00:00:00Z 300", "2026-11-22T00:00:00Z 200", "2026-11-21T00:00:00Z 100"]
-FULL = ["2026-11-16T00:00:00Z 40", "2026-11-09T00:00:00Z 30"]
+PUSH = ["2026-11-23T00:00:00Z 300 cancelled", "2026-11-22T00:00:00Z 200 cancelled", "2026-11-21T00:00:00Z 100 cancelled"]
+FULL = ["2026-11-16T00:00:00Z 40 cancelled", "2026-11-09T00:00:00Z 30 cancelled"]
 
 
 @pytest.mark.validates("evidence", roots=["mathematics"], kind="guard")
@@ -148,3 +148,16 @@ def test_an_outdir_from_an_earlier_fetch_is_replaced_not_mixed(run_script):
     assert proc.returncode == 0, proc.stderr
     assert (out / "push" / "evidence.jsonl").read_text() == "run 200\n"
     assert not (out / "push" / "mem.log").read_text().startswith("old")
+
+
+@pytest.mark.validates("evidence", roots=["mathematics"], kind="guard")
+def test_a_failed_run_without_evidence_is_an_error_not_something_to_skip(run_script):
+    push = ["2026-11-23T00:00:00Z 300 failure", "2026-11-22T00:00:00Z 200 success"]
+    proc, out = run_script(push=push, with_artefact=[200], cancelled=[300])
+    assert proc.returncode != 0
+    assert "run 300 (failure) has no evidence artefact and was not cancelled" in proc.stderr
+    assert not (out / "push" / "evidence.jsonl").exists()  # it did not fall back to run 200
+    # a run that failed its tests still has evidence, and is used
+    proc, out = run_script(push=push, with_artefact=[300, 200])
+    assert proc.returncode == 0, proc.stderr
+    assert (out / "push" / "evidence.jsonl").read_text() == "run 300\n"
