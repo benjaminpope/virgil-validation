@@ -14,8 +14,8 @@ polar-disk = ["frank==1.2.3", "vis-r @ git+https://github.com/drgmk/vis-r@f53467
 orbit-aliases = ["virgil-astro[orbits] @ git+https://github.com/benjaminpope/virgil@c2be8278a4d6549282b3cf199852101929df0462", "corner"]
 # Post-AGB imaging scripts (MultipoleField/MultipoleDisk, pinned to the virgil 0.4.2 CI commit).
 # one virgil pin for both post-AGB pipelines (gp-polar and the parametric ladder), and virgil-vlti for the PIONIER data layer and noise
-# model (scripts/postagb_noise.py); virgil-vlti is pinned at the merge of its with_night_terms PR
-postagb = ["virgil-astro @ git+https://github.com/benjaminpope/virgil@6fa8afee575059fcb7068db8d526920b858bac1c", "virgil-vlti @ git+https://github.com/benjaminpope/virgil-vlti-dev@98c31471053e70e4a8e4dd993533ecb658e489be"]
+# model (scripts/postagb_noise.py); virgil-vlti is pinned at the merge of its with_night_terms PR (public, #3)
+postagb = ["virgil-astro @ git+https://github.com/benjaminpope/virgil@6fa8afee575059fcb7068db8d526920b858bac1c", "virgil-vlti @ git+https://github.com/benjaminpope/virgil-vlti@caf2d4805433230baaf40ed5bcc18db17053d00a"]
 docs = ["mkdocs<2", "mkdocs-material", "zensical>=0.0.62,<0.1"]  # built with Zensical, as virgil is
 
 # The evidence plugin loads whenever the package is installed, so its options
