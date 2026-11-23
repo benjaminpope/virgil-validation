@@ -53,3 +53,5 @@ def test_embedded_cone_data_is_json_and_closed_under_depends():
     assert data["pipelines"]["p"]["steps"] == ["b"]
     assert set(data["letters"]) >= {"mathematics", "standards"}
     assert data["short"]["verified"] == "verified"
+    assert set(data["tag"]) == set(data["short"])  # a short word for every verdict, for the boxes
+    assert all(len(t) <= 20 for t in data["tag"].values())  # it must fit a box

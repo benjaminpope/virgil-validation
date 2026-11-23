@@ -25,6 +25,12 @@ SHORT = {
     "bug": "known bug", "partly": "partly checked", "convention": "convention from virgil's docs",
     "failing": "check failing", "unchecked": "not yet checked",
 }
+# The same, shorter, for the second line of a box in the cone drawing.
+TAG = {
+    "verified": "verified", "relies": "relies on a bug", "relies-unverified": "relies on unverified",
+    "bug": "known bug", "partly": "partly checked", "convention": "convention",
+    "failing": "check failing", "unchecked": "not yet checked",
+}
 OPENING = {
     "verified": "{n} is verified.",
     "relies": "{n} works, but relies on a part with a known bug.",
@@ -217,7 +223,7 @@ def embed(model, roots, root_names=None, alias=None):
     return {
         "order": order, "cones": cones,
         "sentences": {i: sentence(model, i, root_names) for i in ids},
-        "letters": root_letters(roots, alias), "letter_names": LETTER_NAMES, "letter_order": LETTER_ORDER, "short": SHORT,
+        "letters": root_letters(roots, alias), "letter_names": LETTER_NAMES, "letter_order": LETTER_ORDER, "short": SHORT, "tag": TAG,
         "pipelines": {p["id"]: {k: p.get(k) for k in ("title", "status", "steps", "data", "page")}
                       for p in model.get("pipelines", [])},
     }

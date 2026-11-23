@@ -140,7 +140,7 @@
         if (lines[d] > 1) out.push('<line class="vt-cone-span" x1="' + (LEFT - 4) + '" x2="' + (LEFT - 4) + '" y1="' + ydep[d] + '" y2="' + (ydep[d] + (lines[d] - 1) * LINE + BH) + '"/>');
         rows[d].forEach(function (mid) {
           var n = nodes[mid], bx = x[mid] - BW / 2, by = ny[mid], v = verdicts[n.verdict][0], L = lettersOf(n);
-          var word = (C.short[n.verdict] || n.verdict), sel = mid === id ? " sel" : "";
+          var word = (C.tag[n.verdict] || n.verdict), sel = mid === id ? " sel" : "";
           out.push('<a class="vt-cone-box' + sel + '" href="#' + encodeURIComponent(mid) + '" data-cone-node="' + esc(mid) + '" aria-label="' +
             esc(n.label + ": " + v + ". " + (L.length ? "Checked against " + L.map(function (l) { return C.letter_names[l] || "an unlisted root"; }).join(", ") : "No root yet")) + '">' +
             "<title>" + esc(n.id + " · " + v + " · depth " + n.depth + " · " + (n.strong.length ? "checked against " + n.strong.map(function (r) { return roots[r] || r; }).join(", ") : "no counted root")) + "</title>" +
