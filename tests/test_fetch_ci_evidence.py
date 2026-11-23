@@ -26,6 +26,7 @@ case "$1 $2" in
     for ok in $FAKE_WITH_ARTEFACT; do [ "$ok" = "$run" ] && echo "evidence-push-$run"; done ;;
   "run download")
     run=$3; while [ $# -gt 0 ]; do [ "$1" = -D ] && dir=$2; shift; done
+    [ "$run" = "$FAKE_DOWNLOAD_FAILS" ] && exit 1
     mkdir -p "$dir"; echo mem > "$dir/mem.log"
     for ok in $FAKE_WITH_EVIDENCE; do [ "$ok" = "$run" ] && echo "run $run" > "$dir/evidence.jsonl"; done ;;
 esac
@@ -41,12 +42,13 @@ def run_script(tmp_path):
     gh.write_text(STUB)
     gh.chmod(gh.stat().st_mode | stat.S_IXUSR)
 
-    def run(*args, push=(), full=(), with_artefact=(), cancelled=()):
+    def run(*args, push=(), full=(), with_artefact=(), cancelled=(), download_fails=None):
         env = {**os.environ, "PATH": f"{bindir}:{os.environ['PATH']}", "GITHUB_REPOSITORY": "o/r",
                "FAKE_RUNS_push": "\n".join(push),
                "FAKE_RUNS_schedule": "\n".join(full),
                "FAKE_RUNS_workflow_dispatch": "",
                "FAKE_WITH_ARTEFACT": " ".join(map(str, [*with_artefact, *cancelled])),
+               "FAKE_DOWNLOAD_FAILS": str(download_fails),
                "FAKE_WITH_EVIDENCE": " ".join(map(str, with_artefact))}
         out = tmp_path / "ci"
         proc = subprocess.run(["bash", str(SCRIPT), *args, str(out)], env=env, capture_output=True, text=True)
@@ -110,3 +112,11 @@ def test_push_only_never_looks_up_the_full_run_and_still_falls_back(run_script):
     assert (out / "push" / "evidence.jsonl").read_text() == "run 200\n"
     assert not (out / "full").exists()
     assert proc.stderr.count("using an older run") == 1
+
+
+@pytest.mark.validates("evidence", roots=["mathematics"], kind="guard")
+def test_a_failed_download_stops_the_script_instead_of_reading_as_success(run_script):
+    proc, out = run_script(push=PUSH, full=FULL, with_artefact=[300, 40], download_fails=300)
+    assert proc.returncode != 0
+    assert "downloading evidence-push-300 of run 300 failed" in proc.stderr
+    assert not (out / "push" / "evidence.jsonl").exists()

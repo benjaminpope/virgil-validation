@@ -34,7 +34,8 @@ fetch() {  # fetch RUN's evidence artefact into DIR; 1 if it has none or no evid
   local run=$1 dir=$2 name
   name=$(gh api "repos/$repo/actions/runs/$run/artifacts" --jq '.artifacts[] | select(.name | startswith("evidence-")) | .name' | head -n 1)
   [ -n "$name" ] || return 1
-  gh run download "$run" -R "$repo" -n "$name" -D "$dir"
+  # fetch runs inside an `if`, where set -e is off: a failed download must stop the script, not read as success
+  gh run download "$run" -R "$repo" -n "$name" -D "$dir" || { echo "downloading $name of run $run failed" >&2; exit 1; }
   # a cancelled run still uploads its artefact (mem.log, no evidence.jsonl): that is no evidence
   [ -f "$dir/evidence.jsonl" ] || { rm -rf "$dir"; return 1; }
   echo "$dir: $name (https://github.com/$repo/actions/runs/$run)"

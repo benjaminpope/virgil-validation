@@ -510,7 +510,7 @@ IMLUP_SIGMA = [1.12, 1.15, 1.13, 1.13, 1.13, 1.14, 1.14, 1.14, 1.14, 1.13, 1.14,
 
 
 @pytest.mark.slow
-@pytest.mark.validates("virgil.radio.ComplexVisData.term", "virgil.radio.ComplexVisData.model", "virgil.radio.CalibrationNuisance", roots=["mpol", "mathematics"], tier="A", headline="rel_mpol_vs_virgil")
+@pytest.mark.validates("virgil.radio.ComplexVisData.term", "virgil.radio.ComplexVisData.model", "virgil.radio.CalibrationNuisance", roots=["mpol", "mathematics"], tier="B", headline="rel_mpol_vs_virgil")
 @pytest.mark.skipif(len(list(SUBSAMPLE.glob("ddid_*.npz"))) != 26, reason=f"the stride-1000 subsample is not in {SUBSAMPLE}")
 def test_the_objective_matches_mpol_on_all_26_ddids_and_7_observations_of_im_lup(tmp_path):
     """On the whole stride-1000 subsample (42,424 visibilities, 26 ddids, 7 observations) at MPoL-like
