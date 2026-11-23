@@ -147,11 +147,16 @@
       var shown = list.length > 7 ? list.slice(0, 3).map(link).concat(["…"], list.slice(-2).map(link)) : list.map(link);
       return shown.join(" → ");
     }
+    function findingLinks(n) {
+      return n.findings.map(function (f) { return '<a href="#' + esc(f) + '">' + esc(f) + "</a>"; }).join(", ");
+    }
     function fixItem(it) {
-      var id = C.order[it[0]], n = nodes[id], note = it[1] === 1 ? "this part" : it[1] === 2 ? "via reference code" : "";
-      return '<li><a href="#' + encodeURIComponent(id) + '">' + icon(n.verdict) + '<span class="vt-fx-l">' + esc(label(id)) +
-        (n.findings.length ? ' <span class="vt-fx-w">' + esc(n.findings.join(" ")) + "</span>" : "") + '</span><span class="vt-fx-n">blocks ' + C.blocks[it[0]] +
-        '</span><span class="vt-fx-w">' + esc(C.short[n.verdict]) + (note ? " · " + note : "") + "</span></a></li>";
+      var id = C.order[it[0]], n = nodes[id], own = it[1] === 1, via = it[1] === 2;
+      var head = '<a href="#' + encodeURIComponent(id) + '">' + icon(n.verdict) + '<span class="vt-fx-l">' + (own ? "<b>This part</b>: " : "") + esc(label(id)) +
+        (!own && n.findings.length ? ' <span class="vt-fx-w">' + esc(n.findings.join(" ")) + "</span>" : "") + '</span><span class="vt-fx-n">blocks ' + C.blocks[it[0]] +
+        '</span><span class="vt-fx-w">' + esc(C.short[n.verdict]) + (via ? " · via reference code" : "") + "</span></a>";
+      return "<li" + (own ? ' class="vt-fx-own"' : "") + ">" + head +
+        (own && n.findings.length ? '<div class="vt-fx-f">Findings: ' + findingLinks(n) + "</div>" : "") + "</li>";
     }
     function showCone(id) {
       var pipe = !nodes[id], L = C.lens[id];
@@ -175,11 +180,14 @@
       }
       var right = "<h5>What would fix it</h5>";
       if (L.fix.length) {
-        right += '<p class="vt-muted vt-path">The parts that are not verified, the ones that hold back most others first.</p><ul class="vt-fix">' + L.fix.slice(0, 6).map(fixItem).join("") + "</ul>";
+        right += '<p class="vt-muted vt-path">Parts with a problem of their own, this part first, then the ones that hold back most others.</p><ul class="vt-fix">' + L.fix.slice(0, 6).map(fixItem).join("") + "</ul>";
         if (L.fix.length > 6) right += '<details class="vt-fold"><summary>Show ' + (L.fix.length - 6) + ' more</summary><ul class="vt-fix">' + L.fix.slice(6).map(fixItem).join("") + "</ul></details>";
+      } else if (L.wait) {
+        right += '<p class="vt-fine">No part here has a problem of its own; ' + L.wait + (L.wait === 1 ? " is" : " are") + " waiting on what is beneath.</p>";
       } else {
         right += '<p class="vt-fine">Nothing to fix: every part in this cone is verified.</p>';
       }
+      if (L.fix.length && L.wait) right += '<p class="vt-muted vt-path vt-fx-wait">plus ' + L.wait + " part" + (L.wait === 1 ? "" : "s") + " waiting on these</p>";
       var v = L.ver;
       right += "<h5>Fine as it is</h5><p class=\"vt-fine\"><b>" + v[0] + " verified part" + (v[0] === 1 ? "" : "s") + "</b> beneath" +
         (v[0] ? "<br><span>" + v[1].map(function (t) { return esc(t[0]) + " " + t[1]; }).join(", ") + "</span>" : "") + "</p>";
@@ -234,6 +242,9 @@
       if (o.hash !== false) {
         try { history.replaceState(null, "", "#" + encodeURIComponent(id)); } catch (err) { /* a file: page cannot */ }
       }
+      if (o.panel && cone && cone.getBoundingClientRect().top > innerHeight * 0.7) {   // a click or Enter on a square or chip: bring a panel that is below the viewport (or only its edge showing) into it
+        cone.scrollIntoView({block: "nearest", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth"});
+      }
       if (o.scroll && sky) sky.scrollIntoView({block: o.block || "nearest", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth"});
       return true;
     }
@@ -266,7 +277,7 @@
       el.addEventListener("click", function (ev) {
         if (ev.button || ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) return;   // open in a new tab, as a link does
         if (inSky) ev.preventDefault();
-        select(el.getAttribute("data-node"), inMap ? {fold: true} : {});
+        select(el.getAttribute("data-node"), inMap ? {fold: true, panel: true} : {panel: true});
       });
       el.addEventListener("keydown", function (ev) {
         if ((ev.key === "Enter" || ev.key === " ") && el.tagName.toLowerCase() === "g") { ev.preventDefault(); el.dispatchEvent(new MouseEvent("click", {bubbles: true})); }

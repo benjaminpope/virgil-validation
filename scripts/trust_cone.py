@@ -305,29 +305,43 @@ def longest_chain(model, id):
         seen.add(x)
 
 
+def _need_work(model, c, id, blk=None):
+    """The not-verified parts of a cone, and the reference parts its checks go through, as ``(waiting, needs_work)``:
+    ``waiting`` are those whose only problem is relying on others (relies on an unverified part, relies on a known
+    bug), ``needs_work`` those with a problem of their own (failing, bug, partly, convention, not checked)."""
+    nodes = model["nodes"]
+    pipe = c["kind"] == "pipeline"
+    because = (_pipeline_of(model, id).get("unverified", []) if pipe
+               else [b["id"] for b in nodes[id].get("because", [])])
+    members = [n for n in c["nodes"] if nodes[n]["verdict"] != "verified"] + list(_extras(model, c, because))
+    waiting = [n for n in members if nodes[n]["verdict"].startswith("relies") and (pipe or n != id)]  # not the selection itself
+    return waiting, [n for n in members if n not in waiting and not (nodes[n]["verdict"].startswith("relies") and not pipe and n == id)]
+
+
 def fix_list(model, id, blk=None):
-    """What would make the selection verified: the not-verified parts in its cone, and the reference parts its
-    checks go through (``via``), as ``[(id, note)]`` ordered by how many parts they block, then verdict, depth, id.
-    ``note`` is ``""``, ``"this part"`` (the selection itself) or ``"via"`` (reference code outside the cone).
-    A selection whose only problem is relying on others is left out of its own list, and a verified cone
-    has an empty list."""
+    """What would make the selection verified: the parts in its cone (and the reference parts its checks go through,
+    ``via``) that need work themselves, as ``[(id, note)]``. A part whose only problem is relying on others is left
+    out, because fixing what is beneath it fixes it (``waiting`` counts them). ``note`` is ``""``, ``"this part"``
+    (the selection itself, always first when it has a problem of its own) or ``"via"`` (reference code outside the
+    cone). The rest are ordered by how many parts they block, then verdict severity, then depth, then id: deliberately
+    not the order of ``trust_render.ORDER``, which ranks verdicts for the page's bar and legend, not for fixing.
+    A verified cone has an empty list."""
     c = cone(model, id)
     nodes = model["nodes"]
     blk = blocks(model) if blk is None else blk
     pipe = c["kind"] == "pipeline"
-    because = (_pipeline_of(model, id).get("unverified", []) if pipe
-               else [b["id"] for b in nodes[id].get("because", [])])
-    via = _extras(model, c, because)
-    items = []
-    for n in c["nodes"]:
-        if nodes[n]["verdict"] == "verified":
-            continue
-        if not pipe and n == id and nodes[n]["verdict"].startswith("relies"):
-            continue
-        items.append((n, "this part" if (not pipe and n == id) else ""))
-    items += [(n, "via") for n in via]
-    items.sort(key=lambda t: (-blk[t[0]], _severity(nodes[t[0]]["verdict"]), c["nodes"].get(t[0], 0), t[0]))
+    _, work = _need_work(model, c, id, blk)
+    via = set(_extras(model, c, (_pipeline_of(model, id).get("unverified", []) if pipe
+                                 else [b["id"] for b in nodes[id].get("because", [])])))
+    items = [(n, "via" if n in via else ("this part" if (not pipe and n == id) else "")) for n in work]
+    items.sort(key=lambda t: (t[1] != "this part", -blk[t[0]], _severity(nodes[t[0]]["verdict"]), c["nodes"].get(t[0], 0), t[0]))
     return items
+
+
+def waiting(model, id):
+    """How many parts in the cone (and reference parts it goes through) are not verified only because they rely on others."""
+    c = cone(model, id)
+    return len(_need_work(model, c, id)[0])
 
 
 def verified_beneath(model, id):
@@ -364,7 +378,7 @@ def embed(model, roots, root_names=None, alias=None):
     ``order`` lists every part id once; ``cones`` maps each part and pipeline id to the indices into ``order`` of its
     cone (a part's own index first); ``sentences`` the sentence of each; ``lens`` the figure's and the panel's paths
     and lists for each id, as indices: ``crit`` (critical path), ``chain`` (longest chain), ``fix`` (``[index, note]``
-    with note 0 none, 1 this part, 2 via), ``ver`` (verified parts beneath: ``[total, [[layer, n], ...]]``);
+    with note 0 none, 1 this part, 2 via), ``wait`` (parts waiting only on others), ``ver`` (verified parts beneath: ``[total, [[layer, n], ...]]``);
     ``blocks`` the blocks count of each part, parallel to ``order``; ``root_class`` the class of each root;
     ``pipelines`` the little the panel needs of each pipeline.
     """
@@ -381,6 +395,7 @@ def embed(model, roots, root_names=None, alias=None):
         lens[i] = {"crit": [index[n] for n in critical_path(model, i, blk)],
                    "chain": [index[n] for n in longest_chain(model, i)],
                    "fix": [[index[n], note_code[note]] for n, note in fix_list(model, i, blk)],
+                   "wait": waiting(model, i),
                    "ver": [total, [list(t) for t in layers]]}
     return {
         "order": order, "cones": cones, "lens": lens, "blocks": [blk[n] for n in order],

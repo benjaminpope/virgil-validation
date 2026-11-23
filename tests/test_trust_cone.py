@@ -235,8 +235,7 @@ def test_longest_chain_follows_the_deepest_part_to_the_ground():
 def test_fix_list_orders_by_what_each_part_blocks_and_drops_a_relies_only_selection():
     assert tc.fix_list(MODEL, "top") == [("ground2", ""), ("buggy", "")]
     assert tc.fix_list(MODEL, "loneliest") == [("loneliest", "this part")]  # its own problem stays in its list
-    assert tc.fix_list(MODEL, "buggy")[0] == ("ground2", "")                 # a bug of its own is listed too
-    assert ("buggy", "this part") in tc.fix_list(MODEL, "buggy")
+    assert tc.fix_list(MODEL, "buggy") == [("buggy", "this part"), ("ground2", "")]  # the selection's own problem first, though ground2 blocks more
 
 
 def test_fix_list_names_the_reference_parts_a_part_or_pipeline_goes_through():
@@ -260,3 +259,23 @@ def test_embed_carries_the_lens_as_indices():
     assert [e["blocks"][e["order"].index(n)] for n in ("ground2", "top")] == [2, 0]
     assert [(name(i), n) for i, n in e["lens"]["viaonly"]["fix"]] == [("ground2", 2), ("buggy", 2)]
     assert set(e["lens"]) == set(e["cones"])
+
+
+def test_fix_list_leaves_out_parts_that_only_rely_on_others_and_counts_them():
+    ns = [node("t", "relies-unverified", ["m", "w"], 3), node("m", "relies-unverified", ["w"], 2), node("w", "bug", ["g"], 1),
+          node("g", "verified", depth=0), node("n", "relies", ["m"], 3)]
+    m = {"nodes": {n["id"]: n for n in ns}, "pipelines": []}
+    assert tc.fix_list(m, "t") == [("w", "")]   # m waits on w, and t is the selection
+    assert tc.waiting(m, "t") == 1              # m; the selection is not counted
+    assert tc.waiting(m, "n") == 1              # n's cone is n, m, w, g: only m waits
+    assert tc.fix_list(m, "w") == [("w", "this part")] and tc.waiting(m, "w") == 0
+    assert tc.waiting(m, "g") == 0 and tc.fix_list(m, "g") == []
+    e = tc.embed(m, {"roots": []}, {})
+    assert e["lens"]["t"]["wait"] == 1
+
+
+def test_a_via_part_that_only_relies_on_others_is_waiting_not_listed():
+    ns = [node("sel", "relies-unverified", strong=["mathematics"], because=["refwait", "refbad"]),
+          node("refwait", "relies-unverified", ["refbad"], 1), node("refbad", "unchecked", depth=0)]
+    m = {"nodes": {n["id"]: n for n in ns}, "pipelines": []}
+    assert tc.fix_list(m, "sel") == [("refbad", "via")] and tc.waiting(m, "sel") == 1
