@@ -30,7 +30,6 @@ validated when, in addition, every step is verified.
 import argparse
 import collections
 import json
-import os
 import pathlib
 import re
 import subprocess
@@ -1041,8 +1040,8 @@ def main():
     ap.add_argument("--strict-provenance", action="store_true",
                     help="leave out runs on uncommitted code or on commits outside this branch (the published page)")
     ap.add_argument("--weekly-source", default=None,
-                    help="source.json that scripts/fetch_ci_evidence.sh wrote for the weekly run (CI ci/full/source.json); "
-                         "if it does not exist the page says there is no weekly evidence. Omit locally: the page says nothing.")
+                    help="full.source.json that scripts/fetch_ci_evidence.sh wrote for the weekly run (CI: ci/full.source.json), "
+                         "which says which run was used or why none was. Without it the page says nothing about the weekly run.")
     ap.add_argument("--out", default=ROOT / "docs" / "index.md")
     ap.add_argument("--index", default=None, help="also write the page here (the site's home page)")
     ap.add_argument("--json", default=None)
@@ -1059,8 +1058,7 @@ def main():
     model["weekly"] = None  # not asked: the page says nothing (display only; no verdict reads it)
     if args.weekly_source:
         src = pathlib.Path(args.weekly_source)
-        model["weekly"] = (json.loads(src.read_text()) if src.is_file()
-                           else {"run_id": None, "max_age_days": int(os.environ.get("FULL_MAX_AGE_DAYS", "8"))})
+        model["weekly"] = json.loads(src.read_text()) if src.is_file() else None
     out, index = pathlib.Path(args.out), pathlib.Path(args.index) if args.index else None
     docs_root = ROOT / "docs"
     for path in [out] + ([index] if index else []):

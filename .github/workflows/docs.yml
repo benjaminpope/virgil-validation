@@ -50,7 +50,7 @@ jobs:
           scripts/fetch_ci_evidence.sh ci
           extra=$(for f in ci/full/evidence.jsonl ci/full/virgil-evidence.jsonl; do [ -f "$f" ] && echo "--evidence $f"; done)
           .venv/bin/python scripts/trust.py --strict-provenance --evidence ci/push/evidence.jsonl $extra \
-            --weekly-source ci/full/source.json \
+            --weekly-source ci/full.source.json \
             --virgil virgil-src \
             --out docs/index.md --json docs/assets/trust.json \
             --findings docs/method/findings.md --coverage docs/method/coverage.md --tests docs/tests/index.md

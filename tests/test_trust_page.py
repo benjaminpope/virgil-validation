@@ -171,10 +171,14 @@ def test_function_tests_section_missing_is_an_error(tmp_path):
 
 
 @pytest.mark.validates("evidence", roots=["standards"], kind="guard")
-def test_page_says_which_weekly_run_supplied_the_slow_tests_or_that_there_is_none(model):
-    assert "Weekly evidence" not in trust.render(model) and "No weekly evidence" not in trust.render(model)  # not asked
+def test_page_says_which_weekly_run_supplied_the_slow_tests_or_why_none_did(model):
+    assert "eekly evidence" not in trust.render(model)  # not asked
     page = trust.render({**model, "weekly": {"run_id": 50, "date": "2026-11-23T03:00:00Z", "vv_commit": "beef050",
                                               "url": "https://github.com/o/r/actions/runs/50"}})
     assert 'Weekly evidence from 2026-11-23, <a href="https://github.com/o/r/actions/runs/50">run 50</a>.' in page
-    page = trust.render({**model, "weekly": {"run_id": None, "max_age_days": 8}})
-    assert "No weekly evidence within 8 days: the tests that run only weekly show as unchecked." in page
+    page = trust.render({**model, "weekly": {"run_id": None, "reason": "too_old", "ignored_run": 40, "age_days": 10, "max_age_days": 9}})
+    assert "No weekly evidence: the newest weekly run (run 40) is 10 days old, past the 9-day limit." in page
+    assert "show as unchecked, and virgil" in page and "own CI evidence is missing" in page
+    page = trust.render({**model, "weekly": {"run_id": None, "reason": "no_evidence", "ignored_run": 60}})
+    assert "the newest weekly run (run 60) produced none" in page
+    assert "there is no weekly run yet" in trust.render({**model, "weekly": {"run_id": None, "reason": "none"}})
