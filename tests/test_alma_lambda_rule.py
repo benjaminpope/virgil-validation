@@ -174,11 +174,18 @@ def test_sweep_fails_when_a_fast_loop_fit_has_not_converged(data, sigma, monkeyp
     """Item 6 holds on the fast loop: a grid point or secant refit with kkt_w >= 1e-4 ends the run."""
     import functools
 
-    monkeypatch.setattr(vl, "fit_point", functools.partial(vl.fit_point, max_rounds=1))
-    monkeypatch.setattr(vl, "kkt_of", lambda report: (1.0, float("nan")))
+    fits, original = [], vl.fit_point
+
+    def counted(*a, **kw):
+        fits.append(1)
+        return original(*a, max_rounds=1, **kw)
+
+    # the 13 grid fits converge; every later (secant) refit does not, so the post-dof_discrepancy check is the one that fires
+    monkeypatch.setattr(vl, "fit_point", counted)
+    monkeypatch.setattr(vl, "kkt_of", lambda report: (1e-6 if len(fits) <= 13 else 1.0, 0.5))
     with pytest.raises(vl.RuleFailure, match="item 6") as e:
         vl.sweep_stage(data, sigma, npix=NPIX, pixel_mas=PIX, log=lambda *a: None)
-    assert e.value.record["unconverged_fits"]
+    assert e.value.record["unconverged_fits"] and len(fits) > 13 and e.value.record["curvature_step_run"] is True
 
 
 def test_sweep_fails_when_m_stays_above_3_se_after_the_secant_steps(data, sigma, monkeypatch):
@@ -295,3 +302,33 @@ def test_the_command_runs_the_stages_in_order_and_refuses_the_sweep_without_d4(c
     call("--stage", "final", *geom)
     final = json.loads((out / "lambda_final.json").read_text())
     assert final["status"] == "ok" and final["weight"] == sweep["weight"] and final["criteria_commit"] and np.load(out / "image.npy").shape == (NPIX, NPIX)
+
+
+def test_item_6_fails_on_the_grid_before_the_curvature_step_runs(data, sigma, monkeypatch):
+    """Unconverged grid fits end the sweep at once: ``dof_discrepancy`` is never called and the record holds the grid table (no m or g)."""
+    from virgil.imaging import LCurve
+
+    def never(self, *a, **kw):
+        raise AssertionError("dof_discrepancy must not run after an item 6 failure on the grid")
+
+    monkeypatch.setattr(LCurve, "dof_discrepancy", never)
+    monkeypatch.setattr(vl, "kkt_of", lambda report: (1.0, 0.5))
+    with pytest.raises(vl.RuleFailure, match="item 6") as e:
+        vl.sweep_stage(data, sigma, npix=NPIX, pixel_mas=PIX, log=lambda *a: None)
+    rec = e.value.record
+    assert rec["status"] == "failed" and rec["stage"] == "sweep" and rec["curvature_step_run"] is False and "not run" in rec["note"]
+    assert len(rec["points"]) == len(rec["unconverged_fits"]) == 13
+    assert set(rec["points"][0]) == {"weight", "w_over_s2", "chi2", "kkt_w", "band_limit"}
+    for key in ("s2", "sigma_s", "fingerprint", "seed", "n_rows", "n_real", "npix", "pixel_mas", "flux_jy", "ref_obs"):
+        assert key in rec
+
+
+def test_the_curvature_wrapper_counts_times_and_logs():
+    ticks = iter(range(0, 1000, 2))  # each product takes 2 s on this clock
+    lines = []
+    wrapped = vl.counting_curvature(lambda model: (lambda v: v + model), log=lines.append, every=3, clock=lambda: next(ticks))
+    for model in (1, 10):
+        product = wrapped(model)
+        assert [product(0), product(1)] == [model, model + 1]
+    assert wrapped.stats["calls"] == 4 and wrapped.stats["seconds"] == 8.0
+    assert any("new weight" in x for x in lines) and any("progress" in x and "3 calls" in x for x in lines)
