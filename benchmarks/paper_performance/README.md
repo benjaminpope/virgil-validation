@@ -203,3 +203,13 @@ Outputs: `results/results.csv` (one row per case x task x config x threads x cod
 * I-sim-large gate fails on the virgil side (virgil loss vs the neutral objective, worst relative difference 1.85e-2 at the truth; eht-imaging agrees to 1e-14): virgil whitens the correlated 4-station closure phases.
 * Fixed after review: imaging native virgil rows were scored on a pixel scale 1.5 % too small (key bug in `imaging/compare.py`; timings unaffected, accuracy columns need a rerun); orbit O-A-real start period on the prior bound (see Findings; rows need a rerun); `not_run` rows of the virgil default-method route were labelled `ehtim`.
 * Open (rerun or design decision needed): Octofitter Level A carries an unused `flux_H`; Octofitter chains are sequential calls; eht-imaging `flux_weight`; no independent gate on virgil's binary and Level B likelihoods; B-real-pionier T3 matched virgil is 259 sigma from the reference; label-swapped PMOIRED optimum on B-sim-60 T3.
+
+## Reading the O-A-sim-pulls row
+
+`t_init` and `t_cold` of O-A-sim-pulls are **sums over the 20 fits** (one per noise seed, in one process); `t_warm` is **one fit** (seed 00).
+Per fit, divide `t_init` and `t_cold` by `n_datasets` (rows record `iterations.t_init_per_fit` and `t_cold_per_fit`). In run r2 the 144 s
+virgil `t_cold` was 20 fits, 7.2 s per fit against 3.9 s warm: not a 140 s compile. Level A now passes the data as a model argument and
+reuses one `MCMC(jit_model_args=True)` across the seeds, so the compile is paid once.
+
+Octofitter's global optimisation and Pathfinder are paid in `t_init` and their payoff (starts near the mode, a dense metric from the
+draws) in `t_cold` and `t_warm`: compare warm ratios together with `t_init`, not alone.

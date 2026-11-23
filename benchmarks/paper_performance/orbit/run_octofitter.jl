@@ -148,7 +148,8 @@ function main()
         for k in 1:nch
             rng = Random.Xoshiro(seed0 * 100 + k)
             if use_pigeons
-                res = octofit_pigeons(model; n_rounds = parse(Int, A["pigeons-rounds"]), multithreaded = Threads.nthreads() > 1)
+                res = octofit_pigeons(model; n_rounds = parse(Int, A["pigeons-rounds"]), multithreaded = Threads.nthreads() > 1,
+                                     seed = seed0 * 100 + k)      # each of the nch calls has its own Pigeons seed (the same default would repeat one run)
                 push!(chains, res.chain)
             else
                 push!(chains, octofit(rng, model, 0.8; adaptation = warm, iterations = draws, max_depth = maxd, verbosity = 0))
@@ -178,7 +179,10 @@ function main()
         all(s -> all(isfinite, s), model.starting_points) || error("Octofitter starting points are not all finite")
         if ids == 1
             P0 = vec(start_chain[:b_P])
-            init_detail = Dict("n_starting_points" => length(model.starting_points), "start_P_d_range" => [minimum(P0), maximum(P0)],
+            # a Pathfinder failure leaves 1000 copies of the optimiser's point (a warning only): one distinct point, identity metric
+            n_distinct = length(unique(map(collect, model.starting_points)))
+            init_detail = Dict("n_starting_points" => length(model.starting_points), "n_distinct_starting_points" => n_distinct,
+                               "pathfinder_ok" => n_distinct > 1, "start_P_d_range" => [minimum(P0), maximum(P0)],
                                "start_P_d_median" => sort(P0)[cld(length(P0), 2)])
         end
         t0 = time_ns()
@@ -205,15 +209,18 @@ function main()
         "t_warm" => t_warm, "t_inner_total" => tsec(T_START), "rusage_peak_mb" => Sys.maxrss() / 1e6,
         "thread_env" => Dict("julia_threads" => Threads.nthreads()), "flags" => flags,
         "n_data" => LEVEL == "A" ? 2 * (CASE == "O-A-real" ? 12 : 10) : 1440, "n_param" => model.D, "n_datasets" => length(SEEDS),
-        "iterations" => Dict("sampling_calls" => 1 + length(t_warm)),
+        "iterations" => Dict("sampling_calls" => 1 + length(t_warm), "n_datasets" => length(SEEDS), "t_init_per_fit" => t_init / length(SEEDS), "t_cold_per_fit" => t_cold / length(SEEDS)),
         "accuracy" => Dict(),
         "settings" => Dict("config" => CONFIG, "case" => CASE, "phase_parameter" => string(PHASE), "warmup" => warm,
                            "draws" => draws, "chains" => nch, "chain_method" => "sequential calls", "target_accept" => 0.8,
                            "max_tree_depth" => maxd, "sampler" => use_pigeons ? "octofit_pigeons" : "octofit",
                            "mass_matrix" => "dense (AdvancedHMC DenseEuclideanMetric)",
                            "init" => "initialize!(Xoshiro(100 seed), model): prior draws -> global optimisation -> Pathfinder, 1000 draws " *
-                                     "of its approximation in the unconstrained space (inside every prior's support); each chain " *
-                                     "starts at one draw (the chain's generator) with the dense metric set from the draws' covariance",
+                                     "of its approximation in the unconstrained space (inside every prior's support); " *
+                                     (use_pigeons ? "octofit_pigeons: chain k starts at model.starting_points[k] (Pigeons takes the points in order; " *
+                                                    "its own seed is 100 seed + k per call); not AdvancedHMC, no dense metric from the draws" :
+                                                    "each chain starts at one draw (the chain's generator) with the dense metric set from the draws' covariance") *
+                                     "; pathfinder_ok = " * string(get(init_detail, "pathfinder_ok", missing)) * " (false: Pathfinder failed, one distinct point)",
                            "init_detail" => init_detail,
                            "observing_geometry" => string(CORR), "barycentric_lighttime" => string(CORR),
                            "versions" => Dict("julia" => string(VERSION), "octofitter" => string(pkgversion(Octofitter)))),

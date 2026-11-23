@@ -106,21 +106,23 @@ def make_priors(p_prior, phase):
 # One rule for every case, both levels and both configs (CHANGES.md 2026-11-23, README "Chain starts"):
 #   1. the period search covers the central [q, 1 - q] quantile interval of the period prior;
 #   2. the trial periods are the midpoints (in frequency) of virgil's phase-coherent ``period_grid`` cells over that
-#      interval, so no trial is an end point; an interval with fewer cells than chains (a period known to better than
-#      one phase-coherence step) is cut into as many cells as chains, so that each chain can start at its own period;
+#      interval, so no trial is an end point; an interval with fewer cells than chains (a period prior narrower than one
+#      phase-coherence step, which the astrometry cannot resolve: O-A-real, whose narrow prior comes from an external
+#      period) uses equal-prior-mass strata instead, P_j = icdf((j + 1/2) / chains), clipped into the interval, so the
+#      chains start spread as the prior is (about +-0.3 and +-1.2 sigma for 4 chains), not at the tails;
 #   3. every scalar start value is clipped into the [q, 1 - q] interval of its own prior, so it is strictly inside the
 #      support and at most |logit(q)| from the centre in the coordinates NUTS samples in (a guard: recorded when used);
 #   4. no random numbers: the starts are a function of the data and the priors alone.
 # q equals virgil's own inset for NUTS starts (virgil/pipeline/_common.py, _START_INSET = 1e-3 of the prior's width,
-# the same thing as a quantile for the uniform and isotropic priors here).
+# the same thing as a quantile, in the flat coordinate (cos i for inclination), for the uniform and isotropic priors here).
 START_Q = 1e-3
 INIT_RULE = {
     "A": "starting_orbits (Thiele-Innes grid search, n_best = chains) over trial_periods",
     "B": "epoch_positions -> starting_orbits (n_best = 200) over trial_periods -> rank_orbits -> chain_starts; flux = median "
          "of the per-epoch fits",
 }
-INIT_COMMON = ("trial_periods = frequency midpoints of period_grid cells (at least one cell per chain) over the period prior's "
-               f"central [q, 1-q] quantile interval; every scalar start clipped into its own prior's [q, 1-q] interval; q = {START_Q}; deterministic, "
+INIT_COMMON = ("trial_periods = frequency midpoints of period_grid cells over the period prior's "
+               f"central [q, 1-q] quantile interval (a prior narrower than one phase-coherence cell: equal-prior-mass strata icdf((j+1/2)/chains)); every scalar start clipped into its own prior's [q, 1-q] interval; q = {START_Q}; deterministic, "
                "no random numbers")
 
 
@@ -135,15 +137,18 @@ def trial_periods(times, p_prior, n_min=1, q=START_Q):
 
     ``period_grid`` returns cell edges, end points included (its two end points alone when the interval is narrower than
     one phase-coherence step). The midpoints are spaced as the edges are, lie strictly inside the interval, and every
-    period of the interval is within half a step of one of them. With fewer than ``n_min`` cells the interval is cut
-    into ``n_min`` equal cells in frequency instead (a finer grid than phase coherence asks for): the runners pass the
-    number of chains, since data precise enough to earn a narrow period prior separate periods within one step.
+    period of the interval is within half a step of one of them. With fewer than ``n_min`` cells the astrometry cannot
+    separate the periods of the interval at all (the narrow prior comes from outside the data), so the trials are the
+    strata ``icdf((j + 1/2) / n_min)`` of the prior, one per chain, clipped into the interval: dispersion in P follows the
+    prior, not the grid. The runners pass the number of chains as ``n_min``.
     """
     from virgil.orbits import period_grid
 
-    f = 1.0 / period_grid(times, *prior_interval(p_prior, q))
-    if f.size - 1 < n_min:
-        f = onp.linspace(f[0], f[-1], n_min + 1)
+    lo, hi = prior_interval(p_prior, q)
+    f = 1.0 / period_grid(times, lo, hi)
+    if f.size - 1 < n_min:      # narrower than the data can resolve: equal-prior-mass strata, derived from the prior alone
+        strata = [float(p_prior.icdf((j + 0.5) / n_min)) for j in range(n_min)]
+        return onp.sort(onp.clip(strata, lo, hi))
     return onp.sort(1.0 / (0.5 * (f[:-1] + f[1:])))
 
 
@@ -258,6 +263,25 @@ def level_a_model(positions, plx, t_ref, p_prior, phase):
     return numpyro_model(lambda **v: None, priors, (), likelihoods=terms), priors, orbit_fn
 
 
+def level_a_model_arg(plx, t_ref, p_prior, phase):
+    """Level A model with the data as an ARGUMENT: ``model(positions)``. One ``MCMC(jit_model_args=True)`` over it is compiled once
+    and reused for every dataset of equal shape (O-A-sim-pulls: 20 seeds), instead of recompiling per seed because the data were
+    closed-over constants (docs/orbit-compile-time review, fix 2). Same density as ``level_a_model``. Returns ``(model, priors, orbit_fn)``."""
+    from virgil.likelihood import numpyro_model
+    from virgil.orbits import position_angle_prior
+
+    orbit_fn = make_orbit_fn(plx, t_ref, phase)
+    priors = make_priors(p_prior, phase)
+
+    def model(positions):
+        terms = [positions.term(orbit_fn)]
+        if phase == "theta":
+            terms.append(position_angle_prior(orbit_fn))
+        numpyro_model(lambda **v: None, priors, (), likelihoods=terms)()
+
+    return model, priors, orbit_fn
+
+
 # ---- Level B ------------------------------------------------------------------------------------------------------
 
 
@@ -322,6 +346,8 @@ def level_b_values(priors, epochs, plx, t_ref, phase, chains):
     ranked = rank_orbits(lambda orbit: System(primary=PointSource(), comp=Attached(PointSource(flux), orbit)),
                          epochs, [o for o, _ in cands])
     picked = chain_starts(ranked, chains)
+    if len(picked.orbits) < chains:      # as Level A: fewer distinct modes than chains would fail later in numpyro with a shape error
+        raise ValueError(f"chain_starts returned {len(picked.orbits)} orbits for {chains} chains")
     vals, clipped = zip(*(start_values(o, priors, plx, phase, t_ref, extra={"flux": flux}) for o in picked.orbits))
     return list(vals), start_report("B", periods, vals, clipped, priors["P"])
 
@@ -339,15 +365,17 @@ def derive(samples, plx):
     return {"a_mas": a, "A": A, "B": B, "F": F, "G": G}
 
 
-def run_mcmc(model, init, n_warm, n_draw, chains, seed, target_accept=0.8, max_tree_depth=10, mcmc=None):
+def run_mcmc(model, init, n_warm, n_draw, chains, seed, target_accept=0.8, max_tree_depth=10, mcmc=None, args=()):
+    """NUTS over ``model(*args)``. With ``args`` the MCMC is built with ``jit_model_args=True`` so that one compiled sampler serves
+    every dataset passed to it (pass the same ``mcmc`` back in)."""
     import jax
     from numpyro.infer import MCMC, NUTS
 
     if mcmc is None:
         kernel = NUTS(model, target_accept_prob=target_accept, max_tree_depth=max_tree_depth, dense_mass=True)
         mcmc = MCMC(kernel, num_warmup=n_warm, num_samples=n_draw, num_chains=chains, chain_method=CHAIN_METHOD,
-                    progress_bar=False)
-    mcmc.run(jax.random.PRNGKey(seed), init_params=init, extra_fields=("diverging", "num_steps"))
+                    progress_bar=False, jit_model_args=bool(args))
+    mcmc.run(jax.random.PRNGKey(seed), *args, init_params=init, extra_fields=("diverging", "num_steps"))
     common.block(mcmc.get_samples(group_by_chain=True))
     return mcmc
 
@@ -419,32 +447,36 @@ def main():
             epochs = read_epochs(independent_cp=True)
             n_data = int(sum(d.n_independent for d in epochs.data))
 
-    def build(ds):
-        if kind == "A":
-            pos = positions_from(ds[1], t_ref)
-            return level_a_model(pos, plx, t_ref, info["p_prior"], phase)
-        return level_b_model(epochs, plx, t_ref, info["p_prior"], phase)
+    if kind == "A":     # data as a model argument: one compiled sampler for every dataset (fix 2 of the compile-time review)
+        model_a, priors, orbit_fn = level_a_model_arg(plx, t_ref, info["p_prior"], phase)
+    else:
+        model_b, priors, orbit_fn = level_b_model(epochs, plx, t_ref, info["p_prior"], phase)
 
     results, reports = [], []
+    shared = None       # the MCMC object reused across datasets (Level A)
     t_init_total, t_cold_total, t_warm_list, flags = 0.0, 0.0, [], []
     for ds in datasets or [None]:
-        model, priors, orbit_fn = build(ds)
         t0 = time.perf_counter()
         if kind == "A":
-            vals, report = level_a_values(priors, positions_from(ds[1], t_ref), ds[1]["epoch"], plx, phase, t_ref, a.chains)
+            pos = positions_from(ds[1], t_ref)
+            model, args = (lambda pos=pos: model_a(pos)), (pos,)       # a zero-argument view of the model for the start search
+            vals, report = level_a_values(priors, pos, ds[1]["epoch"], plx, phase, t_ref, a.chains)
         else:
+            model, args = model_b, ()
             vals, report = level_b_values(priors, epochs, plx, t_ref, phase, a.chains)
         init = init_params(model, priors, vals, a.seed)
         reports.append(report)
         t_init_total += time.perf_counter() - t0
         t0 = time.perf_counter()
-        mcmc = run_mcmc(model, init, a.warmup, a.draws, a.chains, a.seed, max_tree_depth=a.max_tree_depth)
+        mcmc = run_mcmc(model_a if kind == "A" else model, init, a.warmup, a.draws, a.chains, a.seed, max_tree_depth=a.max_tree_depth,
+                        mcmc=shared, args=args)
+        shared = mcmc if kind == "A" else None
         t_cold_total += time.perf_counter() - t0
         res = collect(mcmc, plx, a.chains)
         results.append((ds, res))
         if not a.no_warm and ds is (datasets[0] if datasets else None):
             t0 = time.perf_counter()
-            run_mcmc(model, init, a.warmup, a.draws, a.chains, a.seed + 1, mcmc=mcmc)
+            run_mcmc(model_a if kind == "A" else model, init, a.warmup, a.draws, a.chains, a.seed + 1, mcmc=mcmc, args=args)
             t_warm_list.append(time.perf_counter() - t0)
     if kind == "B":
         # gate 3 (gates_result.json): independent-CP likelihood differs from neutral by 2.4e-2 (default 0.20); flagged, not gated
@@ -469,11 +501,16 @@ def main():
     settings = {"config": a.config, "phase_parameter": phase, "warmup": a.warmup, "draws": a.draws, "chains": a.chains,
                 "chain_method": CHAIN_METHOD, "target_accept": 0.8, "max_tree_depth": a.max_tree_depth,
                 "mass_matrix": "dense (matches Octofitter: AdvancedHMC DenseEuclideanMetric, sampling.jl)", "case": a.case, "versions": ver,
-                "init": reports[0]["text"], "init_detail": {k: v for k, v in reports[0].items() if k != "text"},
+                "init": reports[0]["text"] + (f" (text and init_detail: dataset 0 of {len(reports)})" if len(reports) > 1 else ""),
+                "init_detail": {k: v for k, v in reports[0].items() if k != "text"},
+                "init_start_P_range_all_datasets_d": [min(min(r["start_P_d"]) for r in reports), max(max(r["start_P_d"]) for r in reports)],
+                "n_datasets": len(reports), "t_cold_note": "t_init and t_cold are sums over n_datasets fits (t_cold_per_fit = t_cold / n_datasets); t_warm is ONE fit (dataset 0)",
+                "sampler": "one MCMC(jit_model_args=True) reused for every dataset (Level A: data are a model argument)" if kind == "A" else "MCMC per run (Level B: data in the model)",
                 "init_chains_clipped_all_datasets": sum(sum(r["chains_clipped_by_site"].values()) for r in reports),
                 "closure_phase_noise": "independent (cp_noise=None; von Mises residual)" if kind == "B" else None}
     common.emit_inner(sw, n_data=n_data, n_param=len(priors) + (0), iterations={
-        "sampling_calls": 1 + len(t_warm_list), "total_leapfrog_steps_first_call": int(first["num_steps"].sum())},
+        "sampling_calls": 1 + len(t_warm_list), "total_leapfrog_steps_first_call": int(first["num_steps"].sum()),
+        "n_datasets": len(reports), "t_init_per_fit": t_init_total / len(reports), "t_cold_per_fit": t_cold_total / len(reports)},
         accuracy=acc, settings=settings, flags=flags,
         provenance=common.provenance(data_manifest=common.manifest_hash(HERE / "manifest.json")))
     if out:

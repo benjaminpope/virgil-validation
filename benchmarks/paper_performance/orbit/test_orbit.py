@@ -135,6 +135,9 @@ def test_trial_periods_narrow_and_wide_windows():
     # O-A-real is the narrow case (period_grid returns only its two end points); the simulated prior is the wide one
     assert n_edges["O-A-real"] == 2 and n_edges["O-A-sim"] > CHAINS + 1
     assert rv.trial_periods(times, prior)[0] == pytest.approx(rv.REAL["P_mean"], abs=1e-6)
+    # the narrow case uses equal-prior-mass strata: 4 chains at about -1.15, -0.32, +0.32, +1.15 sigma of the period prior
+    z = (rv.trial_periods(times, prior, n_min=CHAINS) - rv.REAL["P_mean"]) / rv.REAL["P_sd"]
+    assert z == pytest.approx([-1.15, -0.32, 0.32, 1.15], abs=0.01)
 
 
 def test_start_values_clip_into_the_prior_and_report_it():
@@ -159,7 +162,41 @@ def test_start_values_clip_into_the_prior_and_report_it():
 
 
 def test_octofitter_initialisation_is_seeded():
-    """The Julia runners pass an explicit generator to initialize! (its default is the unseeded global one)."""
+    """TEXTUAL check only: the Julia runners pass an explicit generator to initialize! (its default is the unseeded global one).
+    The behavioural check (same generator -> identical starting points) is `seed_check.jl`, run by the next test when Julia is
+    available and BENCH_JULIA_TESTS=1."""
     for f in ("run_octofitter.jl", "profile_octofitter.jl"):
         src = (HERE / f).read_text()
         assert "initialize!(model;" not in src and "initialize!(Random.Xoshiro(" in src, f
+
+
+def test_octofitter_initialisation_is_reproducible():
+    """Behavioural: initialize!(Xoshiro(100), model) twice gives identical starting points, another seed different ones
+    (opt-in: starts Julia, about a minute)."""
+    import os
+    import shutil
+    import subprocess
+
+    if os.environ.get("BENCH_JULIA_TESTS") != "1" or shutil.which("julia") is None:
+        pytest.skip("set BENCH_JULIA_TESTS=1 with julia on the PATH")
+    r = subprocess.run(["julia", "-t", "1", f"--project={HERE / 'julia'}", str(HERE / "seed_check.jl"), "--case", "O-A-sim"],
+                       capture_output=True, text=True, timeout=1500)
+    assert "SEED_OK" in r.stdout, r.stdout[-500:] + r.stderr[-500:]
+
+
+def test_level_a_model_with_data_argument_has_the_same_density():
+    """``level_a_model_arg`` (data as an argument, one jit_model_args MCMC for all seeds) is the same density as ``level_a_model``."""
+    from numpyro.infer.util import log_density
+
+    rv = _x64()
+    info = rv.case_info("O-A-sim")
+    ds = rv.read_astrometry(rv.DATA / "astrometry_O-A-sim.csv")
+    pos = rv.positions_from(ds, info["t_ref"])
+    for phase in ("M0", "theta"):
+        m0, priors, _ = rv.level_a_model(pos, info["plx"], info["t_ref"], info["p_prior"], phase)
+        m1, priors1, _ = rv.level_a_model_arg(info["plx"], info["t_ref"], info["p_prior"], phase)
+        vals, _ = rv.level_a_values(priors, pos, ds["epoch"], info["plx"], phase, info["t_ref"], CHAINS)
+        params = {k: np.asarray(v) for k, v in vals[0].items()}
+        a = float(log_density(m0, (), {}, params)[0])
+        b = float(log_density(m1, (pos,), {}, params)[0])
+        assert a == pytest.approx(b, rel=1e-12)

@@ -1,7 +1,7 @@
 # CHANGES (orbit comparison)
 
 Predeclared settings live in `cases.yml`. Entries here record anything changed after a measured run started, with the
-reason; none yet. Two WP-O decisions made before any measured run, for the record:
+reason (newest changes are the 2026-11-23 entries below, made after run r2 began). Two WP-O decisions made before any measured run, for the record:
 
 - 2026-11-18: virgil `matched` uses `dense_mass=True` because Octofitter 9.0.0 samples with AdvancedHMC's dense Euclidean
   metric (`src/sampling.jl`); the plan asked for the same mass-matrix type.
@@ -29,6 +29,25 @@ reason; none yet. Two WP-O decisions made before any measured run, for the recor
     1594-2456. No start of any case needs a clip. Priors, data, sampler settings and likelihoods are unchanged.
   - Rows: every virgil orbit row of r2 was measured with the old starts (simulated cases: the `period_grid` edges), so
     the virgil orbit rows should be rerun together, not only O-A-real; `settings.init_detail` tells the two apart.
+- 2026-11-23 (PR 275 review of the start rule; before any row was measured with it):
+  - Narrow period priors (O-A-real: the astrometry spans 0.14 of one phase-coherence step over the whole window, so it cannot tell the
+    periods apart; the narrow prior comes from an external period) now use equal-prior-mass strata `icdf((j + 1/2) / chains)`, about
+    -1.15, -0.32, +0.32, +1.15 sigma for 4 chains, instead of equal frequency cells (which put two chains at +-2.32 sigma, in the tail). The earlier
+    "phase-coherence" rationale for the cell cut was wrong and is removed. Wide windows are unchanged.
+  - Octofitter rows are rerun too: its initialisation changed (seeded generator, recorded `init`, `init_detail`, `pathfinder_ok`), so all
+    orbit rows of both codes come from the one rerun stage and no paired group mixes recorded and unrecorded starts. The Pathfinder fallback
+    (1000 copies of one point after a failure) is recorded as `init_detail.pathfinder_ok` and in the string. Native Level B uses
+    `octofit_pigeons`: its `init` string now says so (chain k starts at `starting_points[k]`, no dense metric from the draws), and the
+    `nch` calls get their own Pigeons `seed` (100 seed + k) instead of repeating one run.
+  - virgil Level A passes the data as a model argument and reuses one `MCMC(jit_model_args=True)` for every dataset (same density; test
+    `test_level_a_model_with_data_argument_has_the_same_density`). Before, each of the 20 O-A-sim-pulls seeds re-traced and recompiled
+    the sampler because the data were closed-over constants. Reporting: `t_init` and `t_cold` of O-A-sim-pulls are sums over the
+    fits, `t_warm` is ONE fit (seed 00); the rows now carry `iterations.n_datasets`, `t_init_per_fit` and `t_cold_per_fit` (both codes). The
+    "140 s of compile" reading of the 144 s r2 figure was wrong: it is 20 fits (7.2 s cold vs 3.9 s warm per fit).
+  - Level B: `chain_starts` returning fewer orbits than chains now raises; for pulls `settings.init` says it describes dataset 0 and
+    `init_start_P_range_all_datasets_d` covers all of them.
+  - Not done: refined starts (fit + Laplace, as OrbitPipeline does) as a separately labelled sensitivity config; the headline stays on the
+    grid starts. The Octofitter profile (`profile_octofitter.jl`) is unaffected.
 - 2026-11-18: both codes use the IAU nominal GM_sun, au and day for Kepler's third law (virgil's convention); gate 1
   measures the residual difference rather than hiding it.
 - 2026-11-18 (WP-R, before the measured run): virgil Level B rows carry the `likelihood_mismatch` flag and `accuracy.likelihood_mismatch_rel` = 2.4e-2 (gate 3, independent closure-phase form; the default likelihood differs by 0.20).

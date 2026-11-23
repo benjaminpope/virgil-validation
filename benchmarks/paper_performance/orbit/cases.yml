@@ -37,7 +37,7 @@ configs:
     initialisation: "each code's own route, no truth-centred starts"
   native:
     octofitter: "defaults (corrections :auto, theta phase); Level B through octofit_pigeons"
-    virgil: "defaults of the shipped workflow (starting_orbits, period_grid, chain_init_params)"
+    virgil: "the shipped workflow (starting_orbits, period_grid, chain_init_params) with the harness start rule of CHANGES.md 2026-11-23 (prior-quantile period window, midpoint trials, clipped starts); the rule is harness logic, not a virgil default"
   smoke: "200 warmup + 200 draws, 4 chains, for WP-O checks only (rows flagged by settings, never used for a headline)"
 
 levels:
