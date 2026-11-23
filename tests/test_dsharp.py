@@ -109,7 +109,7 @@ def test_fetch_image_downloads_checks_size_extracts_and_records(tmp_path, monkey
     monkeypatch.setitem(ds.TARGETS, "hltau_b6", t)
     sums = tmp_path / "sums.json"
     path, status = ds.fetch_image("hltau_b6", tmp_path / "data", sums)
-    assert status == "recorded" and path.read_bytes() == b"FITS" * 10 and not (path.parent / "ref.tgz").exists()
+    assert status == "recorded" and path.read_bytes() == b"FITS" * 10 and (path.parent / "ref.tgz").exists()
     assert ds.fetch_image("hltau_b6", tmp_path / "data", sums)[1] == "verified"
     t["image"]["bytes"] = size + 1
     with pytest.raises(ds.ChecksumMismatch):
@@ -347,13 +347,27 @@ def test_the_plot_extent_follows_crpix_and_cdelt_with_east_left():
 @pytest.mark.validates("crosscheck.dsharp", roots=["self-consistency"], kind="guard")
 def test_a_missing_member_is_reported_with_the_archives_names_and_keeps_the_archive(tmp_path, monkeypatch):
     (tmp_path / "srv").mkdir()
-    tgz = _tgz(tmp_path / "srv" / "ref.tgz", {"wrapped/dir/ref.image.fits": b"FITS" * 10})
+    tgz = _tgz(tmp_path / "srv" / "ref.tgz", {"wrapped/dir/other.fits": b"FITS" * 10})
     t = dict(ds.TARGETS["hltau_b6"], image=dict(url=tgz.as_uri(), bytes=tgz.stat().st_size, etag="", member="ref.image.fits", pbcor=False))
     monkeypatch.setitem(ds.TARGETS, "hltau_b6", t)
-    with pytest.raises(FileNotFoundError, match="wrapped/dir/ref.image.fits"):
+    with pytest.raises(FileNotFoundError, match="wrapped/dir/other.fits"):
         ds.fetch_image("hltau_b6", tmp_path / "data", tmp_path / "sums.json")
     assert (tmp_path / "data" / "hltau_b6" / "ref.tgz").exists()
 
+
+@pytest.mark.validates("crosscheck.dsharp", roots=["self-consistency"], kind="guard")
+def test_an_image_below_the_archives_top_folder_is_found_and_a_rerun_reuses_the_archive(tmp_path, monkeypatch):
+    """The HL Tau reference tarballs hold TOP/NAME.fits; the file lands at NAME.fits, and a second call neither downloads again nor re-extracts."""
+    (tmp_path / "srv").mkdir()
+    tgz = _tgz(tmp_path / "srv" / "ref.tgz", {"top": b"", "top/ref.image.fits": b"FITS" * 10})
+    t = dict(ds.TARGETS["hltau_b6"], image=dict(url=tgz.as_uri(), bytes=tgz.stat().st_size, etag="", member="ref.image.fits", pbcor=False))
+    monkeypatch.setitem(ds.TARGETS, "hltau_b6", t)
+    sums = tmp_path / "sums.json"
+    path, status = ds.fetch_image("hltau_b6", tmp_path / "data", sums)
+    assert status == "recorded" and path == tmp_path / "data" / "hltau_b6" / "ref.image.fits" and path.read_bytes() == b"FITS" * 10
+    tgz.unlink()  # the server copy is gone: a rerun must not need it
+    path2, status2 = ds.fetch_image("hltau_b6", tmp_path / "data", sums)
+    assert path2 == path and status2 == "verified"
 
 @pytest.mark.validates("crosscheck.dsharp", roots=["self-consistency"], kind="guard")
 def test_a_download_is_checked_against_the_committed_table_even_when_recording_elsewhere(tmp_path, monkeypatch):

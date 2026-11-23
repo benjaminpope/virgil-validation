@@ -1,1 +1,12 @@
-{}
+{
+ "https://almascience.eso.org/almadata/lp/DSHARP/images/IMLup_continuum.fits": {
+  "bytes": 64010880,
+  "file": "IMLup_continuum.fits",
+  "sha256": "5d8d78bdc14ded1d41a3dcd99a8c9a92bba51cbf5c07b00151c3e26f8b6b36c8"
+ },
+ "https://almascience.eso.org/almadata/sciver/HLTauBand6/HLTau_Band6_ReferenceImages.tgz": {
+  "bytes": 9511237,
+  "file": "HLTau_Band6_ReferenceImages.tgz",
+  "sha256": "4c757236fdee167ea0457588a048199dca747fd9a8b3888ad34e74adc01cc18d"
+ }
+}

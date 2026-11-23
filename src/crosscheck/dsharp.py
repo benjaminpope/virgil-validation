@@ -16,6 +16,7 @@ from __future__ import annotations
 import hashlib
 import json
 import pathlib
+import shutil
 import tarfile
 import urllib.request
 
@@ -190,21 +191,26 @@ def fetch_image(key, root, checksums=CHECKSUMS):
     root.mkdir(parents=True, exist_ok=True)
     name = pathlib.PurePosixPath(img["url"]).name
     tmp = root / name
-    download(img["url"], tmp, img["bytes"])
+    if not (tmp.exists() and tmp.stat().st_size == img["bytes"]):  # a rerun reuses a file that is already there with the right size (its hash is still checked below)
+        download(img["url"], tmp, img["bytes"])
     committed = read_checksums().get(img["url"])  # the table in the repository: checked even when this run records elsewhere
     if committed and sha256_file(tmp) != committed["sha256"]:
         raise ChecksumMismatch(f"{tmp.name}: sha256 differs from the one committed in data/dsharp/checksums.json")
     status = record_checksum(img["url"], tmp, img["bytes"], checksums)
     if img["member"] is None:
         return tmp, status
-    safe_extract(tmp, root, members=[img["member"]])
     out = root / img["member"]
+    if not out.exists():
+        safe_extract(tmp, root, members=[img["member"]], anywhere=True)  # the member may sit under a top-level folder of the archive
+        if not out.exists():
+            nested = sorted(p for p in root.rglob(pathlib.PurePosixPath(img["member"]).name) if p.is_file() and p != out)
+            if nested:
+                shutil.move(str(nested[0]), str(out))
     if not out.exists():
         with tarfile.open(tmp) as tf:
             names = tf.getnames()
         raise FileNotFoundError(f"{img['member']} is not a member of {name}; it holds {len(names)} members, the first: {names[:20]}")
-    tmp.unlink()
-    return out, status
+    return out, status  # the tarball stays (a few MB): a rerun finds it and does not fetch again
 
 
 # ------------------------------------------------------------------ images and comparison
