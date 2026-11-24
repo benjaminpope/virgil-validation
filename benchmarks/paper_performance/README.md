@@ -107,7 +107,7 @@ Self-test of the scorers, tests, and a dummy row (each under `pyquick`):
 
 ## Limits (stated in every output)
 
-One CPU (r1 laptop; r2 one 64-core EPYC node), no GPU row; 1 thread primary and 2 at most, nothing on all cores; eht-imaging without NFFT; Octofitter
+One CPU (r1 laptop; r2 one 64-core EPYC node) for the tables above; the GPU arm (below) is virgil only, one A100, one run per row; 1 thread primary and 2 at most, nothing on all cores; eht-imaging without NFFT; Octofitter
 interferometry on simulated point-source data only; the HD 224974 orbit case is period-informed; PMOIRED and Octofitter
 parallel modes not run beyond 2 workers; versions and commits as recorded in each row.
 
@@ -261,3 +261,34 @@ is 2x, not 12x. On Level B the gradient gap is 2.2x and virgil takes half the st
 ### Coverage after the rerun
 
 The rerun also ran every group the first node run cut for budget (binary T2 `tight` and T3 `matched-coarse`, imaging `stop_tight`, the I-sim-ring and I-sim-large ladders, native 2 threads): no r2 group is `not_run` any more except the predeclared `matched-truthstart` orbit groups. `results.csv` still lists 51 `not_run` groups with `run = r1`: they are the laptop's budget-cut rows, whose config labels differ from the r2 rows (r1 `stop_tight` against r2 `tight`), so they are leftovers, not missing measurements. Groups faster over the whole matrix: warm virgil 41 / other 11 (23 without a pair), first call 18 / 30, fresh process 31 / 24. `summarise.py --check`: 731 rows, 0 problems. Status: 651 ok, 9 gate_failed, 6 timeout, 1 error.
+
+## GPU arm (stage `gpu`, job 21458441, vv 4e8f2fe, one NVIDIA A100-SXM4-80GB on node gina303)
+
+virgil only (one-thread specs), `JAX_PLATFORMS=cuda`; every one of the 172 rows records `settings.device = "gpu"` and the A100 model.
+One run per row (`n_ok = 1`), on a shared node with the load check off (`BENCH_MAX_LOAD=1000`), so treat ratios near 1 as ties. The other codes
+stay on the CPU of the r2 node; the "other / GPU" column compares their CPU warm time with virgil's GPU warm time. Warm = second call in the
+same process, as in the CPU tables. Full table: `results/gpu_results.csv` (`summarise.py` writes it; GPU rows never enter `results.csv`).
+
+CPU/GPU warm = virgil's one-thread CPU warm time divided by its GPU warm time (above 1: the GPU is faster).
+
+| family | GPU groups | with CPU pair | median CPU/GPU warm | range | GPU faster (n) | status |
+|---|---|---|---|---|---|---|
+| binary | 26 | 24 | 0.56 | 0.21 to 54.06 | 7 | ok 26 |
+| orbit | 7 | 7 | 0.15 | 0.11 to 0.66 | 0 | ok 7 |
+| imaging | 29 | 24 | 1.32 | 0.57 to 10.69 | 17 | ok 25, gate_failed 4 |
+
+* **Binary.** The GPU loses on the small problems and wins where the sampler has real work. T1/T2 warm calls are milliseconds on both
+  devices and the CPU is 1.5 to 5x faster (CPU/GPU 0.21 to 0.69); B-sim-600 is the exception (T1 4.5x, T2 2.1 to 2.6x faster on the GPU).
+  Native T3 (the long NUTS job) gains 5.0x (B-real-pionier), 12.7x (B-sim-6) and 54x (B-sim-60: 0.09 s against 4.77 s); matched T3 is a tie
+  to 1.9x. Against the other codes' CPU warm times the GPU rows are the same order as the CPU ones (T2 0.7 to 4.8x) and
+  three to four orders of magnitude faster than PMOIRED on T3.
+* **Orbit.** The GPU is slower on every orbit row. Level A warm 28 to 38 s against 3.6 to 5.7 s on the CPU (CPU/GPU 0.11 to 0.15, i.e. 7 to 9x slower);
+  Level B 272 s against 175 s (0.64). Octofitter on the CPU is 11 to 20x faster than virgil on the GPU on Level A and equal on Level B. The GPU profile
+  (`results/profile/gpu/`, same tooling as the CPU one) shows why: the 4-chain vmapped gradient costs 188 to 218 µs on the A100 against 107 µs on the CPU
+  for Level A, and 460 µs against 796 µs for O-B-sim; NUTS takes about 100 k leapfrog steps in lock step, 340 µs per step on the GPU. These
+  problems (7 to 8 parameters) are launch-latency bound; the A100 has nothing to parallelise.
+* **Imaging.** Median CPU/GPU 1.32. The per-evaluation row is 3 to 11x faster on the GPU (0.00 s warm on both devices, which is why the ratio is only
+  indicative); the ladder, stop-default and native rows are 0.6 to 4.3x and only the larger grids gain (I-sim-96 native 0.72, I-sim-large native 2.3x).
+  The four I-sim-large matched-config rows (`ladder`, `ladder-default`, `per_eval`, `stop_default`) are `gate_failed` on the GPU, exactly as on the CPU (worst relative difference 0.0185 against the 1e-9 gate, for eht-imaging too), so the failure is in the I-sim-large gate or scorer, not the device, and these cells have no time on either device.
+
+Not tested: float32 or TF32 matmul settings, more than one chain batch per device, multi-GPU, and a GPU run of PMOIRED or eht-imaging (neither has a GPU path).

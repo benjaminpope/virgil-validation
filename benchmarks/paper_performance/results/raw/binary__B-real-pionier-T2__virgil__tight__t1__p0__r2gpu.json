@@ -1,0 +1,140 @@
+{
+ "case": "B-real-pionier-T2",
+ "comparison": "binary",
+ "code": "virgil",
+ "config": "tight",
+ "threads": 1,
+ "size": "full",
+ "status": "ok",
+ "t_process": 1.0476905569812516,
+ "t_calib": 0.26422374200774357,
+ "t_import": 3.972750854998594,
+ "t_load": 0.7503456460108282,
+ "t_init": null,
+ "t_cold": 4.6035990370000945,
+ "t_warm": [
+  0.039111985999625176,
+  0.032085298997117206,
+  0.03157152800122276,
+  0.03515262900327798,
+  0.03191985600278713
+ ],
+ "peak_footprint_mb": 1294.796,
+ "peak_rss_mb": 1294.796,
+ "baseline_mb": null,
+ "cpu_ratio": 1.4420351194072984,
+ "flags": [
+  "likelihood_mismatch"
+ ],
+ "n_data": 92,
+ "n_param": 3,
+ "iterations": {
+  "steps": 14,
+  "converged": true,
+  "chi2_own": 64.40817944484522,
+  "stop": null,
+  "t_fit_cold": 3.657282154992572,
+  "t_laplace_cold": 0.9462045000109356,
+  "t_fit_warm": [
+   0.03639577000285499,
+   0.029515990987420082,
+   0.029051411998807453,
+   0.03266374299710151,
+   0.029370885997195728
+  ],
+  "t_laplace_warm": [
+   0.002647386005264707,
+   0.002499747002730146,
+   0.0024541410093661398,
+   0.002424984995741397,
+   0.002483506003045477
+  ]
+ },
+ "accuracy": {
+  "best": {
+   "dra": 0.11544430555796481,
+   "ddec": 3.6177612934218573,
+   "flux": 0.5257604768631332
+  },
+  "sigma": {
+   "dra": 0.01583087001764375,
+   "ddec": 0.011899597378992101,
+   "flux": 0.03516582313670298
+  },
+  "reference": {
+   "dra": 0.094,
+   "ddec": 3.588,
+   "flux": 0.599
+  },
+  "dev_from_reference_sigma": {
+   "dra": 1.3545879369905,
+   "ddec": 2.5010336462642546,
+   "flux": -2.082690425079964
+  },
+  "chi2_neutral": 78.2704937354163,
+  "chi2_neutral_v2": 37.761968191975214,
+  "chi2_neutral_cp": 40.50852554344108,
+  "chi2_neutral_red": 0.8794437498361382,
+  "chi2_neutral_at_reference": 88.99904855851959,
+  "n_v2": 44,
+  "n_cp": 48,
+  "nearer_reference_than_swapped": true,
+  "swapped": false,
+  "chi2_virgil_at_reference": 74.20681660152076,
+  "n_rows_virgil": 128,
+  "likelihood_mismatch_rel": -0.1662066302570919
+ },
+ "settings": {
+  "method": "lm",
+  "gtol": 1e-08,
+  "start": {
+   "dra": 0.394,
+   "ddec": 3.2880000000000003,
+   "flux": 0.7787
+  },
+  "code": "virgil",
+  "device": "gpu",
+  "case": "B-real-pionier",
+  "config": "tight",
+  "size": "full",
+  "run": "r2",
+  "jax_cache": "cold",
+  "gpu": "NVIDIA A100-SXM4-80GB",
+  "task": "T2",
+  "case_id": "B-real-pionier"
+ },
+ "provenance": {
+  "vv_commit": null,
+  "vv_dirty": false,
+  "virgil_pin": "09b268521072a83f73bc0a77defa6485db270c7b",
+  "versions": {
+   "virgil-astro": null,
+   "jax": "0.12.0.1",
+   "jaxlib": "0.12.0.1",
+   "numpyro": "0.22.0",
+   "pmoired": "26.10.1",
+   "ehtim": null,
+   "numpy": "2.5.4",
+   "scipy": "1.18.1",
+   "arviz": null,
+   "astropy": "8.0.2"
+  },
+  "python": "3.12.7",
+  "macos": "",
+  "chip": "AMD EPYC 7543 32-Core Processor",
+  "cpu_count": 64,
+  "thread_env": {
+   "OMP_NUM_THREADS": "1",
+   "OPENBLAS_NUM_THREADS": "1",
+   "VECLIB_MAXIMUM_THREADS": "1",
+   "MKL_NUM_THREADS": "1",
+   "NUMEXPR_NUM_THREADS": "1",
+   "XLA_FLAGS": "--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1 --xla_cpu_parallel_codegen_split_count=1 --xla_cpu_use_xnnpack=false --xla_cpu_enable_concurrency_optimized_scheduler=false",
+   "JAX_PLATFORMS": "cuda",
+   "JULIA_NUM_THREADS": "1"
+  },
+  "data_manifest_sha256": "b3051f797e7f8c24d24ca53c6f52ab3898e1d574a612c2aa97ea8b0051ba8b60",
+  "virgil_version": "unknown"
+ },
+ "language": "python"
+}
