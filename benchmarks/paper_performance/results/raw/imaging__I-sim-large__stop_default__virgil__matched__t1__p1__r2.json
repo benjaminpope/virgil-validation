@@ -1,0 +1,102 @@
+{
+ "case": "I-sim-large",
+ "comparison": "imaging",
+ "code": "virgil",
+ "config": "matched",
+ "threads": 1,
+ "size": "full",
+ "status": "gate_failed",
+ "t_process": 0.5793072129999928,
+ "t_calib": 0.2596520129991404,
+ "t_import": 3.980099437998433,
+ "t_load": 0.519657097000163,
+ "t_init": null,
+ "t_cold": 33.79816125599973,
+ "t_warm": [
+  35.61830060000102,
+  38.36159395999857,
+  36.19693174299937,
+  34.856505261001075,
+  34.17190204399958
+ ],
+ "peak_footprint_mb": 1328.148,
+ "peak_rss_mb": 1328.148,
+ "baseline_mb": null,
+ "cpu_ratio": 11.429729939818829,
+ "flags": [
+  "threads_not_held"
+ ],
+ "n_data": 6750,
+ "n_param": 2304,
+ "iterations": {
+  "steps": 4545
+ },
+ "accuracy": {
+  "converged": true,
+  "stop": null,
+  "loss": 3578.8953642518677,
+  "score": {
+   "J": 3642.2266868714833,
+   "half_chi2_amp": 2238.3991738522714,
+   "half_chi2_cp": 1062.609561275395,
+   "tv2": 0.00045495726899175647,
+   "flux": 0.9999999999999998,
+   "n_amp": 4500,
+   "n_cp": 2250,
+   "ncc_registered": 0.8694668194902273,
+   "ncc_shift_rc": [
+    3,
+    -3
+   ],
+   "ncc_unregistered": 0.3491306067869377,
+   "rms_rel_beam": 0.14285544517128457,
+   "beam_mas": 1.5443549845383082
+  }
+ },
+ "settings": {
+  "case": "I-sim-large",
+  "task": "stop_default",
+  "reps": 5,
+  "size": "full",
+  "method": "lbfgsb",
+  "gtol": 0.0001,
+  "max_steps": 20000,
+  "memory": 50,
+  "run": "r2",
+  "jax_cache": "cold",
+  "device": "cpu",
+  "reason": "gate against the neutral scorer failed: worst relative difference 0.0185 (tolerance 1e-09); see gate_results.json"
+ },
+ "provenance": {
+  "vv_commit": null,
+  "vv_dirty": false,
+  "virgil_pin": "09b268521072a83f73bc0a77defa6485db270c7b",
+  "versions": {
+   "virgil-astro": null,
+   "jax": "0.12.0.1",
+   "jaxlib": "0.12.0.1",
+   "numpyro": "0.22.0",
+   "pmoired": "26.10.1",
+   "ehtim": null,
+   "numpy": "2.5.4",
+   "scipy": "1.18.1",
+   "arviz": null,
+   "astropy": "8.0.2"
+  },
+  "python": "3.12.7",
+  "macos": "",
+  "chip": "AMD EPYC 7543 32-Core Processor",
+  "cpu_count": 64,
+  "thread_env": {
+   "OMP_NUM_THREADS": "1",
+   "OPENBLAS_NUM_THREADS": "1",
+   "VECLIB_MAXIMUM_THREADS": "1",
+   "MKL_NUM_THREADS": "1",
+   "NUMEXPR_NUM_THREADS": "1",
+   "XLA_FLAGS": "--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1 --xla_cpu_parallel_codegen_split_count=1 --xla_cpu_use_xnnpack=false --xla_cpu_enable_concurrency_optimized_scheduler=false",
+   "JAX_PLATFORMS": "cpu",
+   "JULIA_NUM_THREADS": "1"
+  },
+  "data_manifest_sha256": "9ff0c4e5432d399dab1b2db62ae15a4b3066af304147876be59a21020f540205"
+ }
+}

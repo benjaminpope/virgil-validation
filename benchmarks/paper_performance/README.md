@@ -174,8 +174,8 @@ All paired groups: `results/results.csv`, and the digest `reports/benchmarks-res
 
 - Binary, warm call (ratio other / virgil, 1 thread, matched): T1 21-90 (B-sim-6 38.7, B-sim-60 21.4, B-real-pionier 90.5); T2 1.8-2.7; T3 1.2e4-1.8e4 (PMOIRED 250-390 s per fit at B-sim-6 and B-real-pionier, 880 s at B-sim-60, against virgil 0.02-0.06 s). All 20 binary warm ratios favour virgil (min 1.48, geo-mean 74.7).
 - Binary, first call (cold) and fresh process: virgil pays 2.5 s compile on T2/T3 and has about 4.3 s of import + init; T1 and T2 fresh ratios are 1.16 and 0.74-0.75 (PMOIRED faster on T2 fresh); T3 fresh 36-124 (virgil faster).
-- Orbit, warm (Octofitter faster in all three matched Level A/B groups): O-A-sim 3.85 s vs 1.97 s (ratio 0.51), O-A-sim-pulls 4.0 vs 1.88 (0.47), O-B-sim 170 vs 152 (0.89). Fresh (process incl. Julia / JAX start-up): ratios 3.2, 0.95, 1.24 (virgil faster or level).
-- O-A-real: the virgil rows are `error` in both configs (matched t1, native t2): NumPyro `Cannot find valid initial parameters` in `chain_init_params`. Cause (review, confirmed): the harness start orbit had `P` on the closed bound of the period prior (`starting_orbits` grid includes it), where the Interval transform is infinite; not a virgil fault. Fixed in `orbit/run_virgil.py` (chain starts derived from the priors for every orbit case and kept strictly inside each support, `orbit/README.md` "Chain starts") and checked locally as far as initialisation: every case has finite starts, log density and gradient. The two r2 rows are stale errors until the case is rerun on the node. Octofitter ran the case (matched t1 warm 1.53 s, fresh 61.5 s; native t2 warm 2.50 s, fresh 69.0 s).
+- (Superseded for the orbit rows by "Orbit rows after the start-rule rerun" below.) - Orbit, warm (Octofitter faster in all three matched Level A/B groups): O-A-sim 3.85 s vs 1.97 s (ratio 0.51), O-A-sim-pulls 4.0 vs 1.88 (0.47), O-B-sim 170 vs 152 (0.89). Fresh (process incl. Julia / JAX start-up): ratios 3.2, 0.95, 1.24 (virgil faster or level).
+- (Fixed and rerun, see the rerun section below.) - O-A-real: the virgil rows are `error` in both configs (matched t1, native t2): NumPyro `Cannot find valid initial parameters` in `chain_init_params`. Cause (review, confirmed): the harness start orbit had `P` on the closed bound of the period prior (`starting_orbits` grid includes it), where the Interval transform is infinite; not a virgil fault. Fixed in `orbit/run_virgil.py` (chain starts derived from the priors for every orbit case and kept strictly inside each support, `orbit/README.md` "Chain starts") and checked locally as far as initialisation: every case has finite starts, log density and gradient. The two r2 rows are stale errors until the case is rerun on the node. Octofitter ran the case (matched t1 warm 1.53 s, fresh 61.5 s; native t2 warm 2.50 s, fresh 69.0 s).
 - Imaging, time to precision (seconds to J within 10 % of the span to J_ref / including the fresh overhead): I-sim-24 virgil L-BFGS-B 0.086 / 5.5, virgil LM 0.17 / 7.0, eht-imaging 0.25 / 2.05; I-sim-48 0.667 / 6.0, 0.72 / 7.5, 3.07 / 4.9; I-sim-96 4.44 / 9.6 (L-BFGS-B), eht-imaging 20.3 / 22.1. eht-imaging does not reach the 3 % rung on any target within the budget; virgil LM reaches 0.1 % on I-sim-24 (3.4 s) and I-sim-48 (23 s); virgil L-BFGS-B reaches 0.1 % on I-sim-96 (16.7 s). Cold overhead: virgil 5.1-6.9 s, eht-imaging 1.8 s, so for a single short run from a fresh process eht-imaging is ahead on I-sim-24 and I-sim-48 at 10 % only when the overhead is counted (2.05 s vs 5.5 s and 4.9 s vs 6.0 s).
 - Which code was faster (groups with both times): warm virgil 30, other 8; first-call cold virgil 14, other 22; fresh process virgil 24, other 17.
 - virgil chi2 differs from the neutral reference (closure-phase whitening, 4 telescopes): flag `likelihood_mismatch` on 22 r2 groups (107 rows; binary T2/T3 and orbit Level B); flagged, not gated.
@@ -214,18 +214,46 @@ reuses one `MCMC(jit_model_args=True)` across the seeds, so the compile is paid 
 Octofitter's global optimisation and Pathfinder are paid in `t_init` and their payoff (starts near the mode, a dense metric from the
 draws) in `t_cold` and `t_warm`: compare warm ratios together with `t_init`, not alone.
 
+## Orbit rows after the start-rule rerun (stage `rerun`, job 21458435, vv 4e8f2fe, one EPYC 7543 node per shard)
+
+Every virgil and Octofitter orbit row was rerun with the prior-derived starts (`orbit/CHANGES.md` 2026-11-23). They replace the r2 orbit
+rows; the other tables above are unchanged. Medians over processes, seconds, 1 thread unless listed; `t_init` is Octofitter's
+`initialize!` (global optimisation + Pathfinder) and virgil's grid start, paid once per process (O-A-sim-pulls: summed over 20 fits).
+Ratio = Octofitter / virgil for the warm call (above 1 = virgil faster).
+
+| case | config | thr | virgil warm | Octofitter warm | ratio warm | virgil cold | Octofitter cold | virgil t_init | Octofitter t_init |
+|---|---|---|---|---|---|---|---|---|---|
+| O-A-sim | matched | 1 | 4.0 | 1.9 | 0.48 | 12.0 | 8.8 | 4.4 | 28.9 |
+| O-A-sim | native | 1 | 5.7 | 3.2 | 0.56 | 15.9 | 9.9 | 5.5 | 28.5 |
+| O-A-sim | native | 2 | 5.7 | 3.6 | 0.63 | 16.0 | 9.8 | 5.5 | 32.1 |
+| O-A-sim-pulls (warm = one fit) | matched | 1 | 3.8 | 1.9 | 0.51 | 85.1 | 44.4 | 15.6 | 84.6 |
+| O-A-real | matched | 1 | 3.6 | 1.6 | 0.43 | 12.1 | 8.2 | 5.2 | 29.1 |
+| O-A-real | native | 1 | 5.0 | 2.4 | 0.48 | 15.2 | 9.1 | 6.1 | 29.5 |
+| O-A-real | native | 2 | 5.1 | 2.5 | 0.50 | 15.2 | 9.0 | 6.0 | 33.0 |
+| O-B-sim | matched | 1 | 174.6 | 274.3 | 1.57 | 173.6 | 275.2 | 13.9 | 81.9 |
+| O-B-sim | native | 1 | 183.9 | timeout | - | 199.7 | - | 14.8 | - |
+| O-B-sim | native | 2 | 185.2 | 768.6 (1 of 3) | 4.15 | 199.7 | 772.6 | 15.0 | 79.1 |
+
+Reading: Octofitter's warm advantage on Level A is stable (about 2x, ratios 0.43-0.63); its initialisation costs 29-33 s per process,
+about six times virgil's grid start, so cold and fresh-process totals are closer than the warm call suggests. On Level B virgil is
+faster warm (1.6x matched, 4x native at 2 threads; the Octofitter native 1-thread row timed out). O-A-real is scored in both codes and
+configs (status ok) with the corrected starts. O-A-sim-pulls cold is 20 fits (4.3 s per fit for virgil), now compiled once.
+`matched-truthstart` groups are `not_run` in both codes (not in the budgeted matrix).
+
 ## Warm-orbit profile (CPU, one thread, one EPYC 7543 node; matched config, 4 chains, 1000 + 1000)
 
-Per-call cost of the log density and gradient (median of 500 calls) and the warm NUTS call, from `orbit/profile_virgil.py` and
-`orbit/profile_octofitter.jl` (job 21406771 for the Level A cases, 21458449 for virgil O-B-sim). Raw JSON in `results/profile/`.
+Per-call cost of the log density and gradient (median of 500 calls) from `orbit/profile_virgil.py` and `orbit/profile_octofitter.jl`
+(job 21406771 for the Level A cases, 21458449 for virgil O-B-sim). Raw JSON in `results/profile/`. The warm column is the matrix rerun
+above, **not** the profile run: in 21406771 the timed warm call of virgil ran inside an XProf trace (the profile stage set
+`JAX_PROFILE_DIR`), which inflated it ten-fold (40.7 s against 4.0 s in the matrix) and OOM-killed O-B-sim. `profile_virgil.py` no longer
+traces the timed call (vv 4e8f2fe: 172.9 s on O-B-sim against 174.6 s in the matrix), and NUTS is only traced with `--trace-nuts`.
 
-| case | gradient, virgil | gradient, Octofitter | leapfrog steps (draws, all chains), virgil | same, Octofitter | warm call, virgil | warm call, Octofitter |
-|---|---|---|---|---|---|---|
-| O-A-sim | 71 µs | 6.1 µs | 108 k | 92 k | 40.7 s | 1.9 s |
-| O-A-sim-pulls (seed 00) | 72 µs | 6.2 µs | 101 k | 93 k | 40.0 s | 1.9 s |
-| O-B-sim | 358 µs | 161 µs | 389 k | 755 k | 172.9 s | 279.2 s |
+| case | gradient, virgil, one chain | gradient, virgil, 4 chains vmapped | gradient, Octofitter | steps (draws, all chains) virgil / Octofitter | warm call virgil / Octofitter (matrix) |
+|---|---|---|---|---|---|
+| O-A-sim | 71 µs | 107 µs | 6.1 µs | 108 k / 92 k | 4.0 s / 1.9 s |
+| O-A-sim-pulls (seed 00) | 72 µs | 109 µs | 6.2 µs | 101 k / 93 k | 3.8 s / 1.9 s |
+| O-B-sim | 358 µs | 796 µs | 161 µs | 389 k / 755 k | 174.6 s / 274.3 s |
 
-Reading: on Level A the two samplers take about the same number of steps, so Octofitter's warm advantage there is the cost of one
-gradient (about 12x), not the sampler. On Level B the gradient gap is 2.2x, but virgil needs half the steps, so it is the faster code
-warm. These timings were taken at the start rule of vv 4cd4a8f; the warm numbers of the matrix rerun supersede any figure here.
-No NUTS XProf trace was taken (a traced NUTS run needs more than 250 GB on O-B-sim); `--trace-nuts` is opt-in.
+Reading: on Level A the two samplers take about the same number of steps, so the warm gap is the cost of a gradient evaluation. A single
+virgil gradient is 12x Octofitter's, but virgil evaluates its four chains in one vmapped call (27 µs per chain), which is why the warm gap
+is 2x, not 12x. On Level B the gradient gap is 2.2x and virgil takes half the steps, so it is faster warm.
