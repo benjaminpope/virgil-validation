@@ -257,3 +257,7 @@ traces the timed call (vv 4e8f2fe: 172.9 s on O-B-sim against 174.6 s in the mat
 Reading: on Level A the two samplers take about the same number of steps, so the warm gap is the cost of a gradient evaluation. A single
 virgil gradient is 12x Octofitter's, but virgil evaluates its four chains in one vmapped call (27 µs per chain), which is why the warm gap
 is 2x, not 12x. On Level B the gradient gap is 2.2x and virgil takes half the steps, so it is faster warm.
+
+### Coverage after the rerun
+
+The rerun also ran every group the first node run cut for budget (binary T2 `tight` and T3 `matched-coarse`, imaging `stop_tight`, the I-sim-ring and I-sim-large ladders, native 2 threads): no r2 group is `not_run` any more except the predeclared `matched-truthstart` orbit groups. `results.csv` still lists 51 `not_run` groups with `run = r1`: they are the laptop's budget-cut rows, whose config labels differ from the r2 rows (r1 `stop_tight` against r2 `tight`), so they are leftovers, not missing measurements. Groups faster over the whole matrix: warm virgil 41 / other 11 (23 without a pair), first call 18 / 30, fresh process 31 / 24. `summarise.py --check`: 731 rows, 0 problems. Status: 651 ok, 9 gate_failed, 6 timeout, 1 error.
