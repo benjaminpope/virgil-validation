@@ -68,7 +68,7 @@ fetch_newest() {  # fetch_newest DIR MAXDAYS STRICT EVENT...: the newest run wit
   src="$dir.source.json"
   shift 3
   ids=$(candidates "$@") || { echo "listing the runs of ($*) failed" >&2; return 3; }
-  rm -f "$src"
+  rm -rf "$dir" "$src"  # nothing of an earlier fetch survives any outcome below
   [ -n "$ids" ] || { [ "$strict" != 1 ] || printf '{"run_id": null, "reason": "none"}\n' > "$src"; return 2; }
   now=$(date +%s)
   while read -r created run sha; do

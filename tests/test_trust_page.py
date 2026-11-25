@@ -181,4 +181,19 @@ def test_page_says_which_weekly_run_supplied_the_slow_tests_or_why_none_did(mode
     assert "show as unchecked, and virgil" in page and "own CI evidence is missing" in page
     page = trust.render({**model, "weekly": {"run_id": None, "reason": "no_evidence", "ignored_run": 60}})
     assert "the newest weekly run (run 60) produced none" in page
+    assert "run 70) is left out of this build" in trust.render(
+        {**model, "weekly": {"run_id": None, "reason": "provenance", "ignored_run": 70}})
     assert "there is no weekly run yet" in trust.render({**model, "weekly": {"run_id": None, "reason": "none"}})
+
+
+@pytest.mark.validates("evidence", roots=["standards"], kind="guard")
+def test_a_weekly_run_that_strict_provenance_left_out_is_not_shown_as_used(tmp_path):
+    src = tmp_path / "full.source.json"
+    assert trust.weekly_status(src, []) is None  # no file: the page says nothing
+    used = {"run_id": 50, "date": "2026-11-23T03:00:00Z", "vv_commit": "beef050", "url": "u"}
+    src.write_text(json.dumps(used))
+    assert trust.weekly_status(src, [{"github_run_id": "50"}]) == used
+    assert trust.weekly_status(src, [{"github_run_id": "300"}]) == {  # load_evidence dropped run 50
+        "run_id": None, "reason": "provenance", "ignored_run": 50, "date": "2026-11-23T03:00:00Z"}
+    src.write_text(json.dumps({"run_id": None, "reason": "too_old"}))
+    assert trust.weekly_status(src, []) == {"run_id": None, "reason": "too_old"}

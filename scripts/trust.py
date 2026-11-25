@@ -96,6 +96,19 @@ def provenance_problem(run, repo=ROOT):
     return None if ok else f"ran on {commit[:7]}, which is not in this branch's history"
 
 
+def weekly_status(source, runs):
+    """What the page says about the weekly run: the content of ``source`` (the full.source.json that
+    fetch_ci_evidence.sh wrote), or None when it does not exist. A run that ``load_evidence`` left out
+    (``--strict-provenance``: uncommitted code, or a commit outside this branch) is not shown as used."""
+    source = pathlib.Path(source)
+    if not source.is_file():
+        return None
+    weekly = json.loads(source.read_text())
+    if weekly.get("run_id") and not any(str(r.get("github_run_id")) == str(weekly["run_id"]) for r in runs):
+        return {"run_id": None, "reason": "provenance", "ignored_run": weekly["run_id"], "date": weekly.get("date")}
+    return weekly
+
+
 def load_evidence(paths, strict=False, virgil=None):
     """Runs and test records. A test that appears in several runs keeps only
     its newest outcome, so an old pass cannot outlive a newer skip or failure.
@@ -1057,8 +1070,7 @@ def main():
     model["docs"] = resolve_docs(graph)
     model["weekly"] = None  # not asked: the page says nothing (display only; no verdict reads it)
     if args.weekly_source:
-        src = pathlib.Path(args.weekly_source)
-        model["weekly"] = json.loads(src.read_text()) if src.is_file() else None
+        model["weekly"] = weekly_status(args.weekly_source, runs)
     out, index = pathlib.Path(args.out), pathlib.Path(args.index) if args.index else None
     docs_root = ROOT / "docs"
     for path in [out] + ([index] if index else []):

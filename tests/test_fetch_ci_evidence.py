@@ -222,3 +222,19 @@ def test_an_old_weekly_run_removes_the_full_dir_of_an_earlier_fetch(run_script, 
     proc, out = run_script(push=[f"{_ago(0)} 300 abc300"], full=[f"{_ago(20)} 40 f938988"], with_artefact=[300, 40], max_age="8")
     assert proc.returncode == 0, proc.stderr
     assert not (out / "full").exists()
+    stale.mkdir(parents=True)  # and no weekly run at all
+    (stale / "evidence.jsonl").write_text("old")
+    proc, out = run_script(push=[f"{_ago(0)} 300 abc300"], full=[], with_artefact=[300])
+    assert proc.returncode == 0, proc.stderr
+    assert not (out / "full").exists()
+    assert json.loads((out / "full.source.json").read_text()) == {"run_id": None, "reason": "none"}
+
+
+@pytest.mark.validates("evidence", roots=["mathematics"], kind="guard")
+def test_the_age_limit_itself_is_ignored_and_a_day_less_is_used(run_script):
+    push = [f"{_ago(0)} 300 abc300"]
+    proc, out = run_script(push=push, full=[f"{_ago(8)} 40 f938988"], with_artefact=[300, 40], max_age="8")
+    assert json.loads((out / "full.source.json").read_text())["reason"] == "too_old" and not (out / "full").exists()
+    proc, out = run_script(push=push, full=[f"{_ago(7)} 40 f938988"], with_artefact=[300, 40], max_age="8")
+    assert (out / "full" / "evidence.jsonl").read_text() == "run 40\n"
+    assert json.loads((out / "full.source.json").read_text())["run_id"] == 40

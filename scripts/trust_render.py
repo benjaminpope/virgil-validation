@@ -432,6 +432,8 @@ def _weekly_html(weekly):
     why = {"too_old": lambda w: f'the newest weekly run (run {e(w.get("ignored_run"))}) is {e(w.get("age_days"))} days old, '
                                 f'past the {e(w.get("max_age_days"))}-day limit',
            "no_evidence": lambda w: f'the newest weekly run (run {e(w.get("ignored_run"))}) produced none',
+           "provenance": lambda w: f'the newest weekly run (run {e(w.get("ignored_run"))}) is left out of this build: '
+                                   f'it ran on uncommitted code or on a commit outside this branch',
            }.get(weekly.get("reason"), lambda w: "there is no weekly run yet")(weekly)
     return (f'<div class="vt-muted">No weekly evidence: {why}. The tests that run only weekly show as unchecked, '
             f"and virgil's own CI evidence is missing.</div>")
