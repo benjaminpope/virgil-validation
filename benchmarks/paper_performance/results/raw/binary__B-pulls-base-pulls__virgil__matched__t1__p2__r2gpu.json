@@ -1,0 +1,116 @@
+{
+ "case": "B-pulls-base-pulls",
+ "comparison": "binary",
+ "code": "virgil",
+ "config": "matched",
+ "threads": 1,
+ "size": "full",
+ "status": "ok",
+ "t_process": 0.9385140239901375,
+ "t_calib": 0.2788495970016811,
+ "t_import": 4.366730274996371,
+ "t_load": null,
+ "t_init": null,
+ "t_cold": 15.677949760007323,
+ "t_warm": [],
+ "peak_footprint_mb": 1299.52,
+ "peak_rss_mb": 1299.52,
+ "baseline_mb": null,
+ "cpu_ratio": 1.3731849885394343,
+ "flags": [
+  "likelihood_mismatch"
+ ],
+ "n_data": 300,
+ "n_param": 3,
+ "iterations": {
+  "seeds": 200
+ },
+ "accuracy": {
+  "n": 200,
+  "names": [
+   "dra",
+   "ddec",
+   "flux"
+  ],
+  "pull_mean": [
+   0.030865601268406918,
+   0.0167477831282648,
+   -0.07886704690085321
+  ],
+  "pull_sd": [
+   1.0281655014074884,
+   0.9759307564273495,
+   0.9343160424924398
+  ],
+  "sigma_mean": [
+   0.014433096542897839,
+   0.01612467147080989,
+   0.0009727124230878174
+  ],
+  "bias": [
+   0.00043559229687062384,
+   0.0002574966861890182,
+   -7.504834286771456e-05
+  ],
+  "pull_sd_stderr": 0.05012547071170855,
+  "n_failed": 0,
+  "noise_model": "baseline",
+  "chi2_virgil_at_reference": 230.93632113759026,
+  "chi2_neutral_at_reference": 254.05993887123796,
+  "n_rows_virgil": 390,
+  "likelihood_mismatch_rel": -0.09101638706355496
+ },
+ "settings": {
+  "method": "lm",
+  "gtol": 0.0001,
+  "start": {
+   "dra": 6.3,
+   "ddec": -4.3,
+   "flux": 0.13
+  },
+  "code": "virgil",
+  "device": "gpu",
+  "case": "B-pulls-base",
+  "config": "matched",
+  "size": "full",
+  "run": "r2",
+  "jax_cache": "cold",
+  "gpu": "NVIDIA A100-SXM4-80GB",
+  "task": "pulls",
+  "case_id": "B-pulls-base"
+ },
+ "provenance": {
+  "vv_commit": null,
+  "vv_dirty": false,
+  "virgil_pin": "09b268521072a83f73bc0a77defa6485db270c7b",
+  "versions": {
+   "virgil-astro": null,
+   "jax": "0.12.0.1",
+   "jaxlib": "0.12.0.1",
+   "numpyro": "0.22.0",
+   "pmoired": "26.10.1",
+   "ehtim": null,
+   "numpy": "2.5.4",
+   "scipy": "1.18.1",
+   "arviz": null,
+   "astropy": "8.0.2"
+  },
+  "python": "3.12.7",
+  "macos": "",
+  "chip": "AMD EPYC 7543 32-Core Processor",
+  "cpu_count": 64,
+  "thread_env": {
+   "OMP_NUM_THREADS": "1",
+   "OPENBLAS_NUM_THREADS": "1",
+   "VECLIB_MAXIMUM_THREADS": "1",
+   "MKL_NUM_THREADS": "1",
+   "NUMEXPR_NUM_THREADS": "1",
+   "XLA_FLAGS": "--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1 --xla_cpu_parallel_codegen_split_count=1 --xla_cpu_use_xnnpack=false --xla_cpu_enable_concurrency_optimized_scheduler=false",
+   "JAX_PLATFORMS": "cuda",
+   "JULIA_NUM_THREADS": "1"
+  },
+  "data_manifest_sha256": "b3051f797e7f8c24d24ca53c6f52ab3898e1d574a612c2aa97ea8b0051ba8b60",
+  "virgil_version": "unknown"
+ },
+ "language": "python"
+}

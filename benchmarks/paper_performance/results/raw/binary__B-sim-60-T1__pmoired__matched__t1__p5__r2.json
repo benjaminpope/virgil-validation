@@ -1,0 +1,79 @@
+{
+ "case": "B-sim-60-T1",
+ "comparison": "binary",
+ "code": "pmoired",
+ "config": "matched",
+ "threads": 1,
+ "size": "full",
+ "status": "ok",
+ "t_process": 0.506734566999512,
+ "t_calib": 0.25780623800164904,
+ "t_import": 4.932249859000876,
+ "t_load": 0.026173172002017964,
+ "t_init": null,
+ "t_cold": 0.003145249000226613,
+ "t_warm": [
+  0.0027192742799888947,
+  0.0027127628500238643,
+  0.0027136516099926667,
+  0.002713395529972331,
+  0.0027129995900031646
+ ],
+ "peak_footprint_mb": 193.392,
+ "peak_rss_mb": 193.392,
+ "baseline_mb": null,
+ "cpu_ratio": 0.9797719753291696,
+ "flags": [],
+ "n_data": 3000,
+ "n_param": 3,
+ "iterations": {
+  "calls_per_warm_batch": 100,
+  "data_elements_per_call": 1
+ },
+ "accuracy": {},
+ "settings": {
+  "warm_is": "seconds per call (one VmodelOI per file)",
+  "code": "pmoired",
+  "case": "B-sim-60",
+  "config": "matched",
+  "size": "full",
+  "run": "r2",
+  "jax_cache": "cold",
+  "task": "T1",
+  "case_id": "B-sim-60"
+ },
+ "provenance": {
+  "vv_commit": null,
+  "vv_dirty": false,
+  "virgil_pin": "09b268521072a83f73bc0a77defa6485db270c7b",
+  "versions": {
+   "virgil-astro": null,
+   "jax": "0.12.0.1",
+   "jaxlib": "0.12.0.1",
+   "numpyro": "0.22.0",
+   "pmoired": "26.10.1",
+   "ehtim": null,
+   "numpy": "2.5.4",
+   "scipy": "1.18.1",
+   "arviz": null,
+   "astropy": "8.0.2"
+  },
+  "python": "3.12.7",
+  "macos": "",
+  "chip": "AMD EPYC 7543 32-Core Processor",
+  "cpu_count": 64,
+  "thread_env": {
+   "OMP_NUM_THREADS": "1",
+   "OPENBLAS_NUM_THREADS": "1",
+   "VECLIB_MAXIMUM_THREADS": "1",
+   "MKL_NUM_THREADS": "1",
+   "NUMEXPR_NUM_THREADS": "1",
+   "XLA_FLAGS": "--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1 --xla_cpu_parallel_codegen_split_count=1 --xla_cpu_use_xnnpack=false --xla_cpu_enable_concurrency_optimized_scheduler=false",
+   "JAX_PLATFORMS": "cpu",
+   "JULIA_NUM_THREADS": "1"
+  },
+  "data_manifest_sha256": "b3051f797e7f8c24d24ca53c6f52ab3898e1d574a612c2aa97ea8b0051ba8b60",
+  "pmoired_version": "26.10.1"
+ },
+ "language": "python"
+}

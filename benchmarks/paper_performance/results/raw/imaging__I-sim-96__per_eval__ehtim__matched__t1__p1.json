@@ -1,0 +1,79 @@
+{
+ "case": "I-sim-96",
+ "comparison": "imaging",
+ "code": "ehtim",
+ "config": "matched",
+ "threads": 1,
+ "size": "full",
+ "status": "ok",
+ "t_process": 0.36430612493772063,
+ "t_calib": 0.14153220795560628,
+ "t_import": 2.29150629194919,
+ "t_load": 0.0014987090835347772,
+ "t_init": null,
+ "t_cold": 0.008160625002346933,
+ "t_warm": [
+  0.005197405840735882,
+  0.006500229998491705,
+  0.006464548320509494,
+  0.006844333340413868,
+  0.006521148341707885
+ ],
+ "peak_footprint_mb": 345.637704,
+ "peak_rss_mb": 377.274368,
+ "baseline_mb": null,
+ "cpu_ratio": 0.8700440528634361,
+ "flags": [
+  "noisy"
+ ],
+ "n_data": 312,
+ "n_param": 9216,
+ "iterations": {
+  "calls": 50
+ },
+ "accuracy": {
+  "per_call_calls": 50,
+  "value_at_start": 2854894.8258033586
+ },
+ "settings": {
+  "case": "I-sim-96",
+  "task": "per_eval",
+  "reps": 5,
+  "size": "full",
+  "calls": 50,
+  "method": null
+ },
+ "provenance": {
+  "vv_commit": "09de765eebb41a801f3887013ed227ddffc31ffc",
+  "vv_dirty": true,
+  "virgil_pin": "c2be8278a4d6549282b3cf199852101929df0462",
+  "versions": {
+   "virgil-astro": null,
+   "jax": null,
+   "jaxlib": null,
+   "numpyro": null,
+   "pmoired": null,
+   "ehtim": "1.3.2",
+   "numpy": "2.5.3",
+   "scipy": "1.18.1",
+   "arviz": null,
+   "astropy": "8.0.1"
+  },
+  "python": "3.12.12",
+  "macos": "26.7.2",
+  "chip": "Apple M4",
+  "cpu_count": 10,
+  "thread_env": {
+   "OMP_NUM_THREADS": "1",
+   "OPENBLAS_NUM_THREADS": "1",
+   "VECLIB_MAXIMUM_THREADS": "1",
+   "MKL_NUM_THREADS": "1",
+   "NUMEXPR_NUM_THREADS": "1",
+   "XLA_FLAGS": "--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1",
+   "JAX_PLATFORMS": "cpu",
+   "JULIA_NUM_THREADS": "1"
+  },
+  "data_manifest_sha256": "9ff0c4e5432d399dab1b2db62ae15a4b3066af304147876be59a21020f540205"
+ },
+ "language": "python"
+}

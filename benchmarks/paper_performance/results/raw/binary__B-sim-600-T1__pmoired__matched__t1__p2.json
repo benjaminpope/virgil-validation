@@ -1,0 +1,77 @@
+{
+ "case": "B-sim-600-T1",
+ "comparison": "binary",
+ "code": "pmoired",
+ "config": "matched",
+ "threads": 1,
+ "size": "full",
+ "status": "ok",
+ "t_process": 0.3089584160502996,
+ "t_calib": 0.08091641601640731,
+ "t_import": 2.8703422090038657,
+ "t_load": 0.009674416040070355,
+ "t_init": null,
+ "t_cold": 0.0034988329862244427,
+ "t_warm": [
+  0.002861592500121333,
+  0.002876411249744706,
+  0.0028133295802399514,
+  0.0028537691704696045,
+  0.0030972858401946725
+ ],
+ "peak_footprint_mb": 176.93144,
+ "peak_rss_mb": 207.699968,
+ "baseline_mb": null,
+ "cpu_ratio": 0.9126819126819129,
+ "flags": [],
+ "n_data": 30000,
+ "n_param": 3,
+ "iterations": {
+  "calls_per_warm_batch": 100,
+  "data_elements_per_call": 1
+ },
+ "accuracy": {},
+ "settings": {
+  "warm_is": "seconds per call (one VmodelOI per file)",
+  "code": "pmoired",
+  "case": "B-sim-600",
+  "config": "matched",
+  "size": "full",
+  "task": "T1",
+  "case_id": "B-sim-600"
+ },
+ "provenance": {
+  "vv_commit": "09de765eebb41a801f3887013ed227ddffc31ffc",
+  "vv_dirty": true,
+  "virgil_pin": "c2be8278a4d6549282b3cf199852101929df0462",
+  "versions": {
+   "virgil-astro": "0.4.1",
+   "jax": "0.12.0.1",
+   "jaxlib": "0.12.0.1",
+   "numpyro": "0.22.0",
+   "pmoired": "26.10.1",
+   "ehtim": null,
+   "numpy": "2.5.5",
+   "scipy": "1.18.1",
+   "arviz": "1.3.0",
+   "astropy": "8.0.3"
+  },
+  "python": "3.12.12",
+  "macos": "26.7.2",
+  "chip": "Apple M4",
+  "cpu_count": 10,
+  "thread_env": {
+   "OMP_NUM_THREADS": "1",
+   "OPENBLAS_NUM_THREADS": "1",
+   "VECLIB_MAXIMUM_THREADS": "1",
+   "MKL_NUM_THREADS": "1",
+   "NUMEXPR_NUM_THREADS": "1",
+   "XLA_FLAGS": "--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1",
+   "JAX_PLATFORMS": "cpu",
+   "JULIA_NUM_THREADS": "1"
+  },
+  "data_manifest_sha256": "b3051f797e7f8c24d24ca53c6f52ab3898e1d574a612c2aa97ea8b0051ba8b60",
+  "pmoired_version": "26.10.1"
+ },
+ "language": "python"
+}

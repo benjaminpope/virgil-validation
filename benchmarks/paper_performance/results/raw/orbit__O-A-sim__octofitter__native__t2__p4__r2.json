@@ -1,0 +1,71 @@
+{
+ "case": "O-A-sim",
+ "comparison": "orbit",
+ "code": "octofitter",
+ "config": "native",
+ "threads": 2,
+ "size": "full",
+ "status": "ok",
+ "t_process": 1.1921383899994282,
+ "t_calib": 0.00950497,
+ "t_import": 5.799275572,
+ "t_load": 21.435514938,
+ "t_init": 32.075616968,
+ "t_cold": 9.807915967,
+ "t_warm": [
+  3.579803962
+ ],
+ "peak_footprint_mb": 1874.252,
+ "peak_rss_mb": 1874.252,
+ "baseline_mb": null,
+ "cpu_ratio": 1.0642696284559363,
+ "flags": [],
+ "n_data": 20,
+ "n_param": 11,
+ "iterations": {
+  "t_init_per_fit": 32.075616968,
+  "t_cold_per_fit": 9.807915967,
+  "sampling_calls": 2,
+  "n_datasets": 1
+ },
+ "accuracy": {},
+ "settings": {
+  "init": "initialize!(Xoshiro(100 seed), model): prior draws -> global optimisation -> Pathfinder, 1000 draws of its approximation in the unconstrained space (inside every prior's support); each chain starts at one draw (the chain's generator) with the dense metric set from the draws' covariance; pathfinder_ok = true (false: Pathfinder failed, one distinct point)",
+  "observing_geometry": "auto",
+  "phase_parameter": "\u03b8",
+  "target_accept": 0.8,
+  "sampler": "octofit",
+  "draws": 1000,
+  "chain_method": "sequential calls",
+  "max_tree_depth": 10,
+  "case": "O-A-sim",
+  "config": "native",
+  "versions": {
+   "julia": "1.12.7",
+   "octofitter": "9.0.0"
+  },
+  "chains": 4,
+  "init_detail": {
+   "n_starting_points": 1000,
+   "pathfinder_ok": true,
+   "n_distinct_starting_points": 219,
+   "start_P_d_range": [
+    199.59798619580693,
+    200.17104990524078
+   ],
+   "start_P_d_median": 199.90274282839613
+  },
+  "mass_matrix": "dense (AdvancedHMC DenseEuclideanMetric)",
+  "barycentric_lighttime": "auto",
+  "warmup": 1000,
+  "run": "r2",
+  "jax_cache": "cold",
+  "device": "cpu",
+  "task": "orbit-native",
+  "case_id": "O-A-sim"
+ },
+ "provenance": {
+  "julia": "1.12.7"
+ },
+ "language": "julia"
+}

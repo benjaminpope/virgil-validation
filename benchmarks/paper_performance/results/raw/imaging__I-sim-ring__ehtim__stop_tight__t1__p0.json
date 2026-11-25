@@ -1,0 +1,30 @@
+{
+ "case": "I-sim-ring",
+ "comparison": "imaging",
+ "code": "ehtim",
+ "config": "stop_tight",
+ "threads": 1,
+ "size": "full",
+ "status": "not_run",
+ "t_process": null,
+ "t_calib": null,
+ "t_import": null,
+ "t_load": null,
+ "t_init": null,
+ "t_cold": null,
+ "t_warm": [],
+ "peak_footprint_mb": null,
+ "peak_rss_mb": null,
+ "baseline_mb": null,
+ "cpu_ratio": null,
+ "flags": [],
+ "n_data": null,
+ "n_param": null,
+ "iterations": {},
+ "accuracy": {},
+ "settings": {
+  "reason": "budget",
+  "task": "stop_tight"
+ },
+ "provenance": {}
+}
