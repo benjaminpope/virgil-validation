@@ -252,6 +252,7 @@ def virgil_chain(tmp_path_factory):
     data = va.load_dir(path)
     ref, _ = vl.reference_obs(data)
     prob = ac.build_s2_problem(data, npix=NPIX, pixel_mas=PIX, flux=FLUX_JY, ref_obs=ref)
+    assert type(prob.term).__name__ == "_ToeplitzTerm"  # the resolved Toeplitz engine runs, not the unresolved direct term
     w = 20.0
     return prob, ac.VirgilObjective(prob, w)
 
