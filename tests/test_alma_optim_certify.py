@@ -325,3 +325,99 @@ def test_the_production_hook_runs_c1_to_c6_with_the_signature_dsharp_fit_calls(v
     import json
 
     json.dumps(rep, default=float)  # JSON-able as dsharp_fit's result.json needs
+
+
+@pytest.mark.validates("virgil.fitting.kkt_report", roots=["self-consistency"], kind="guard")
+def test_kkt_w_matches_virgils_when_the_iterate_flux_differs_from_the_reference_flux(virgil_chain):
+    _, obj = virgil_chain
+    f = obj.flat() * (1.0 + 0.5 * np.random.default_rng(2).random(obj.n)) * 1.15  # total flux about 1.4 x the reference flux
+    assert f.sum() / obj.flux > 1.3
+    ours = ac.Evaluator(obj).evaluate(f)["kkt_w"]
+    theirs = ac.virgil_kkt(obj, f)["kkt_w"]
+    assert ours == pytest.approx(theirs, rel=1e-3)
+
+
+# ---------------------------------------------------------------- second review: step rules, joint slices, nuisance safety
+
+
+class CosNuisance(ao.Objective):
+    """One nuisance with ``v(theta) = -cos(theta)``: indefinite (v'' < 0) for theta in (pi/2, 3pi/2), minimum at 0. The image does not enter."""
+
+    def __init__(self, theta, lo=-np.inf, hi=np.inf):
+        super().__init__(4, 1.0, 1.0)
+        self.theta, self._b = np.array([float(theta)]), (np.array([lo]), np.array([hi]))
+
+    def data_vg(self, f):
+        return -float(np.cos(self.theta[0])), np.zeros(self.n)
+
+    def hvp(self, v):
+        return np.zeros_like(v)
+
+    def set_theta(self, theta):
+        self.theta = np.asarray(theta, float).copy()
+
+    def theta_bounds(self):
+        return self._b
+
+    def nuisance_gh(self, f):
+        return np.array([np.sin(self.theta[0])]), np.array([[np.cos(self.theta[0])]])
+
+
+def test_the_nuisance_step_damps_to_positive_definite_and_does_not_climb():
+    obj = CosNuisance(2.0)  # H = cos 2 < 0
+    v0 = obj.data_vg(None)[0]
+    ao.newton_nuisance(obj, np.ones(4))
+    assert obj.data_vg(None)[0] < v0 and obj.theta[0] < 2.0
+
+
+def test_the_nuisance_step_never_evaluates_outside_the_bounds():
+    obj = CosNuisance(2.0, lo=1.99, hi=3.0)
+    ao.newton_nuisance(obj, np.ones(4))
+    assert 1.99 <= obj.theta[0] <= 3.0
+
+
+def test_an_indefinite_nuisance_hessian_fails_the_nuisance_decrement():
+    D, n = ac.nuisance_decrement(CosNuisance(2.0), np.ones(4))
+    assert n == 1 and D == np.inf
+    D, n = ac.nuisance_decrement(CosNuisance(0.3), np.ones(4))
+    assert np.isfinite(D) and D > 0
+
+
+def test_snapshots_after_the_budget_do_not_count_toward_certification():
+    rows = [dict(certified=False, t=1.0, geq=1), dict(certified=True, t=2.0, geq=2), dict(certified=False, t=9.0, geq=3)]
+    assert not ac.certify_series(rows)["certified"]
+    assert ac.certify_series(rows, budget_s=5.0)["certified"]
+
+
+def test_the_accelerated_mirror_makes_progress_when_the_entropy_dominates():
+    obj, _ = toy(seed=2)
+    obj.weight = 30 * WEIGHT  # the entropy gradient outweighs the data gradient: a restart test on the data gradient alone looped at k == 1 with no step
+    res = ao.run("mirror_accel", obj, obj.flat() * (1 + 0.3 * np.cos(np.arange(obj.n))), budget_s=1.0)
+    assert res.steps > 20
+
+
+def test_the_mirror_step_comes_from_the_diagonal_of_the_curvature():
+    obj, _ = toy(seed=2)
+    assert float(obj.diag()[0]) < obj.lipschitz() / 10  # the l1-infinity constant is far smaller than lambda_max
+    res_d = ao.run("mirror", obj, obj.flat(), budget_s=1.0)
+    res_l = ao.run("mirror", obj, obj.flat(), budget_s=1.0, base="lambda")
+    assert obj.value_grad(res_d.f)[0] < obj.value_grad(res_l.f)[0]
+
+
+def test_the_softmax_control_has_a_free_flux(problem):
+    obj, _, f_ref, ev = problem
+    res = ao.run("softmax_lbfgs", obj, 0.5 * obj.flat(), budget_s=3.0)  # a start at the wrong flux
+    assert res.f.sum() > 0.6 * FLUX and abs(res.f.sum() - f_ref.sum()) < 0.2 * FLUX
+    assert ev.evaluate(res.f)["J_minus_Jstar"] < 1.0
+
+
+@pytest.mark.parametrize("name", ["lbfgsb_newton", "adam", "fista"])
+def test_the_joint_slices_return_to_the_nuisance_step_and_end_inside_the_budget(name, monkeypatch, tmp_path):
+    calls = []
+    real = ao.newton_nuisance
+    monkeypatch.setattr(ao, "newton_nuisance", lambda *a, **k: (calls.append(1), real(*a, **k))[1])
+    obj, _ = toy(seed=7, gain=1.0, gain_true=1.15)
+    res = ao.run(name, obj, obj.flat(), budget_s=3.0, joint_rounds=6, out=tmp_path, snap_every=0.3)
+    assert len(calls) >= 3, (name, len(calls))
+    assert res.theta[0] != 1.0
+    assert max(s["t"] for s in res.snapshots) <= 3.0 * (1 + 1e-3)

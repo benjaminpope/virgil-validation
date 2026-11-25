@@ -249,6 +249,10 @@ def cmd_reference(args):
         ev.set_reference(fb, tb)
         agree, dJ, dist = ac.reference_agreement(ev, fa, fb)
         rec = dict(methods=[ma, mb], tier=args.tier, weight_mult=mult, w=obj.weight, agree=agree, dJ=dJ, image_distance=dist, status="ok" if agree else "failed", provenance=ac.provenance())
+        certified = [bool(ev.evaluate(f_, t_)["certified"]) for f_, t_ in ((fa, ta), (fb, tb))]  # two methods stalled at the same uncertified point would "agree"
+        rec["both_certified"] = certified
+        agree = bool(agree and all(certified))
+        rec.update(agree=agree, status="ok" if agree else "failed")
         if agree:
             obj.set_theta(ta)
             ev.set_reference(fa, ta)
@@ -277,7 +281,7 @@ def cmd_score(args):
             raise SystemExit(f"{ref.name} was made at w = {float(z['w']):g}, this run has w = {obj.weight:g}: refusing to score against it")
         ev.set_reference(z["f"], z["theta"] if z["theta"].size else None)
     recs = ac.score_snapshots(ev, str(d), log=say)
-    series = ac.certify_series(recs)
+    series = ac.certify_series(recs, budget_s=meta.get("budget_s"))
     result = json.loads((d / "result.json").read_text()) if (d / "result.json").exists() else {}
     failed = bool(result.get("failed", False))  # a step cap is a failed run
     row = dict(run=args.run, certified=bool(series["certified"] and not failed), failed=failed, series=series, final=recs[-1] if recs else None, n_scored=len(recs),

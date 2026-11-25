@@ -21,6 +21,7 @@ import glob
 import time
 
 import numpy as np
+from scipy import linalg
 
 from . import alma_optim as ao
 
@@ -51,7 +52,11 @@ def nuisance_decrement(obj, f):
     if not hasattr(obj, "nuisance_gh") or np.asarray(obj.theta).size == 0:
         return 0.0, 0
     g, H = obj.nuisance_gh(f)
-    return 0.5 * float(g @ np.linalg.solve(H, g)), int(g.size)
+    try:
+        cf = linalg.cho_factor(0.5 * (H + H.T), lower=True)
+    except (np.linalg.LinAlgError, linalg.LinAlgError, ValueError):
+        return float("inf"), int(g.size)  # not positive definite: a saddle or a maximum, never stationary-and-minimal, so the nuisance test fails
+    return 0.5 * float(g @ linalg.cho_solve(cf, g)), int(g.size)
 
 
 class Evaluator:
@@ -81,7 +86,7 @@ class Evaluator:
             obj.set_theta(theta)
         f = np.asarray(f, float)
         J, g = obj.value_grad(f)
-        unit = obj.weight / obj.flux
+        unit = obj.weight / float(f.sum())  # w / F as kkt_report has it: F is the iterate's own flux (b.sum()), not the reference flux
         peak = float(f.max())
         rel = f / peak
         hi, mid, low = rel > ACTIVE, (rel <= ACTIVE) & (rel >= FROZEN), rel < FROZEN
@@ -109,9 +114,11 @@ class Evaluator:
         return rec
 
 
-def certify_series(records):
+def certify_series(records, budget_s=None):
     """Certification of a run from its scored snapshots (each with ``certified``, ``t`` seconds and ``geq`` gradient-equivalents), in time order: certified only if the tests pass at a snapshot
     and at **every later snapshot**. Returns ``dict(certified, index, t, geq, n)``; ``t`` and ``geq`` are those of the first snapshot of the final unbroken run of passes."""
+    if budget_s is not None:  # a snapshot taken after the budget is not the method's: only those inside it count
+        records = [r for r in records if r["t"] <= budget_s * (1 + 1e-3)]
     n = len(records)
     first = None
     for i in range(n - 1, -1, -1):
@@ -238,10 +245,7 @@ def build_s2_problem(data, *, npix, pixel_mas, flux, ref_obs, gains=False, offse
         return LinearImage(values["pixels"], pixel_mas, dra=shift, ddec=shift, ft="auto", parametrization="sqrt", reference_flux=flux)
 
     nuis = CalibrationNuisance(data, ref_obs=ref_obs, alpha=False, gains=gains, offsets=offsets, sigmas=False, fit_flux=False)
-    if offsets:
-        term, _ = va.toeplitz_term(data, scene, nuis, npix=npix, pixel_mas=pixel_mas, mask=None, max_offset_mas=float(max_offset_mas))
-    else:
-        term = data.term(scene, nuis, chi2="toeplitz")
+    term, _ = va.toeplitz_term(data, scene, nuis, npix=npix, pixel_mas=pixel_mas, mask=None, max_offset_mas=float(max_offset_mas))  # resolved Toeplitz term also without offsets
     priors = {"pixels": dist.ImproperUniform(dist.constraints.real, (), event_shape=(npix, npix))}
     if gains or offsets:
         priors.update(nuis.priors(**({"offset": (-float(max_offset_mas), float(max_offset_mas))} if offsets else {})))
@@ -284,7 +288,7 @@ class VirgilObjective(ao.Objective):
             return v
 
         def half(f, theta):
-            return 0.5 * self.term.full_chi2_and_log_norm(values(f, theta))[0]
+            return 0.5 * self.term.chi2_and_log_norm(values(f, theta))[0]  # less the parameter-independent constants: J ~ 1e4, not 5e7
 
         self._vg = jax.jit(jax.value_and_grad(half))
         gr = jax.grad(half)
@@ -295,7 +299,25 @@ class VirgilObjective(ao.Objective):
         self._diag, self._lip = None, None
 
     def set_theta(self, theta):
-        self.theta = np.asarray(theta, float).copy()
+        theta = np.asarray(theta, float).copy()
+        if theta.shape != self.theta.shape or not np.array_equal(theta, self.theta):
+            self._diag, self._lip = None, None  # the curvature T(theta) scales with the gains
+        self.theta = theta
+
+    def theta_bounds(self):
+        """``(lo, hi)`` over ``theta``: gains positive, offsets inside the problem's box (mas), else unbounded."""
+        lo, hi = np.full(self.theta.size, -np.inf), np.full(self.theta.size, np.inf)
+        for k, a, b in self.layout:
+            if k == "cal.gain":
+                lo[a:b] = 1e-3
+            elif k == "cal.offset":
+                bound = getattr(self.prob, "offset_bound_mas", None)
+                if bound is None:  # a Problem: the box is the prior's support
+                    pr = self.prob.priors.get("cal.offset")
+                    bound = np.inf if pr is None else np.maximum(np.abs(np.asarray(pr.low, float)), np.abs(np.asarray(pr.high, float)))
+                bound = np.broadcast_to(np.asarray(bound, float), (b - a,))
+                lo[a:b], hi[a:b] = -bound, bound
+        return lo, hi
 
     def data_vg(self, f):
         import jax.numpy as jnp
@@ -359,8 +381,21 @@ def virgil_kkt(objective, f):
     from virgil.fitting import kkt_report
     from virgil.imaging import MaxEntropy
 
+    import types
+
+    data = objective.prob.data
+
+    class _Likelihood:  # a resolved Toeplitz term keeps no (u, v) in its arrays, which kkt_report's band limit reads: give it the data's own
+        arrays = {"u": np.asarray(data.u), "v": np.asarray(data.v)}
+
+        def __init__(self, term):
+            self._t = term
+
+        def __getattr__(self, name):
+            return getattr(self._t, name)
+
     reg = MaxEntropy(float(objective.weight))
-    rep = kkt_report(fit_result(objective, f), objective.prob.priors, (), [reg], likelihoods=[objective.term], weight=float(objective.weight))
+    rep = kkt_report(fit_result(objective, f), objective.prob.priors, (), [reg], likelihoods=[_Likelihood(objective.term)], weight=float(objective.weight))
     (img,) = rep["images"].values()
     return dict(kkt_w=float(img["kkt_w"]), band_limit=float(img.get("band_limit", np.nan)), want_grow=float(img["want_grow"]), converged=bool(rep["converged"]), report=rep)
 
@@ -505,7 +540,7 @@ def certify(prob, values, data, result, out):
 
     def direct():
         obj.set_theta(th_ref)
-        toeplitz = 2.0 * obj.data_vg(f_ref)[0]
+        toeplitz = 2.0 * obj.data_vg(f_ref)[0] + float(obj.term.chi2_constant)  # the full chi2: the objective leaves the constant out
         sc = va.score(data, prob.scene, {k: np.asarray(v) for k, v in values.items()}, prob.nuis, eps=1e-12)
         rel = abs(float(sc["chi2_raw"]) - toeplitz) / abs(toeplitz)
         return dict(passed=bool(rel < C5_RTOL), rel_diff=float(rel), chi2_direct=float(sc["chi2_raw"]), chi2_toeplitz=float(toeplitz), eps=1e-12)

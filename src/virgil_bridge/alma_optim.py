@@ -22,7 +22,7 @@ import pathlib
 import time
 
 import numpy as np
-from scipy import optimize
+from scipy import linalg, optimize
 from scipy.special import xlogy
 
 TINY = 1e-300
@@ -126,6 +126,9 @@ class CirculantObjective(Objective):
 
     def set_theta(self, theta):
         self.theta = np.asarray(theta, float).copy()
+
+    def theta_bounds(self):
+        return np.full(self.theta.size, 1e-3), np.full(self.theta.size, np.inf)  # the gain stays positive
 
     def nuisance_gh(self, f):
         """Gradient and Hessian of the data term in the gain (one parameter): d/dg = g f'Tf - r'f, d2/dg2 = f'Tf."""
@@ -508,11 +511,13 @@ def _step_L(obj, step):
     return float(step) / obj.lipschitz()
 
 
-def mirror(obj, meter, f0, step=1.0, accel=False, **_):
-    """Entropic mirror descent: the exact proximal-Bregman step ``ln f+ = (ln f - eta d) / (1 + eta w / F) + ...`` with ``eta = step / (lambda_max(T) F)`` set by the data term alone
-    (the entropy is inside the Bregman geometry, so it needs no step condition); ``accel=True`` adds Nesterov momentum on ``ln f`` with gradient restart."""
-    eta = float(step) / (obj.lipschitz() * obj.flux)
-    c = eta * obj.weight / obj.flux
+def mirror(obj, meter, f0, step=1.0, accel=False, base="diag", **_):
+    """Entropic mirror descent: the exact proximal-Bregman step ``ln f+ = (ln f - eta d + c ln q) / (1 + c)``, ``c = eta w / F``. The KL divergence is ``1/F``-strongly convex in the
+    l1 norm on a flux-``F`` set, so the matching smoothness constant of the quadratic data term is ``max|T_ij| = T_ii`` (``base="diag"``, the default): ``eta = step / (T_ii F)``;
+    ``base="lambda"`` uses ``lambda_max(T)`` instead (the l2 constant, far more conservative). ``eta`` is scaled by ``F / max(||y||_1, F)`` where the iterate's flux exceeds ``F``.
+    ``accel=True`` adds Nesterov momentum on ``ln f`` with a gradient restart that tests the **total** gradient and only once there is momentum (k > 1)."""
+    L = float(obj.diag()[0]) if base == "diag" else float(obj.lipschitz())
+    eta0 = float(step) / (L * obj.flux)
     lnq = np.log(obj.q)
     lf = np.log(np.asarray(f0, float))
     lf_prev = lf.copy()
@@ -523,13 +528,16 @@ def mirror(obj, meter, f0, step=1.0, accel=False, **_):
         ly = lf + beta * (lf - lf_prev)
         y = np.exp(ly)
         _, d = meter.data_vg(y)
+        eta = eta0 * obj.flux / max(float(y.sum()), obj.flux)
+        c = eta * obj.weight / obj.flux
         lf_new = (ly - eta * d + c * lnq) / (1.0 + c)
-        if accel and float(d @ (np.exp(lf_new) - np.exp(lf))) > 0:
-            k = 0  # restart: the momentum pushed uphill
+        f_new = np.exp(lf_new)
+        if accel and k > 1 and float((d + obj.entropy_grad(y)) @ (f_new - np.exp(lf))) > 0:
+            k = 0  # restart: the momentum pushed uphill (total gradient, so the entropy is in the test)
             lf_prev = lf.copy()
             continue
         lf_prev, lf = lf, lf_new
-        meter.accept(np.exp(lf))
+        meter.accept(f_new)
 
 
 def mirror_accel(obj, meter, f0, step=1.0, **_):
@@ -555,15 +563,11 @@ def fista(obj, meter, f0, step=1.0, **_):
         meter.accept(f)
 
 
-def adam(obj, meter, f0, lr=0.05, beta1=0.9, beta2=0.999, steps=None, eps=1e-8, **_):
-    """Adam in float64 on ``x = sqrt f`` with a cosine schedule from ``lr`` (relative to the start's mean ``x``) to 1e-3 of it over ``steps`` (default: the budget's worth of
-    gradients, from a timed probe), then constant at the floor."""
+def adam(obj, meter, f0, lr=0.05, beta1=0.9, beta2=0.999, eps=1e-8, **_):
+    """Adam in float64 on ``x = sqrt f`` with a cosine schedule from ``lr`` (relative to the start's mean ``x``) to 1e-3 of it over the run's budget, **read off the meter's clock**
+    (``meter.elapsed() / meter.budget_s``), so a method restarted in slices (tier B) keeps annealing; constant at the floor after."""
     x = np.sqrt(np.asarray(f0, float))
     scale = float(x.mean())
-    if steps is None:
-        t0 = time.perf_counter()
-        meter.vg(x * x)
-        steps = max(int(meter.budget_s / max(time.perf_counter() - t0, 1e-6) * 0.9), 10)
     m = np.zeros_like(x)
     v = np.zeros_like(x)
     for k in range(1, 10**12):
@@ -571,33 +575,38 @@ def adam(obj, meter, f0, lr=0.05, beta1=0.9, beta2=0.999, steps=None, eps=1e-8, 
         gx = 2.0 * x * g
         m = beta1 * m + (1 - beta1) * gx
         v = beta2 * v + (1 - beta2) * gx * gx
-        frac = min(k / steps, 1.0)
+        frac = min(max(meter.elapsed() / meter.budget_s, 0.0), 1.0)
         lr_k = scale * lr * (1e-3 + (1 - 1e-3) * 0.5 * (1 + np.cos(np.pi * frac)))
         x = x - lr_k * (m / (1 - beta1**k)) / (np.sqrt(v / (1 - beta2**k)) + eps)
         meter.accept(x * x)
 
 
 def softmax_lbfgs(obj, meter, f0, maxcor=100, **_):
-    """Control: L-BFGS-B on softmax logits, ``f = F softmax(eta)``: the old behaviour, to be scored under the new test."""
-    F = obj.flux
-    eta0 = np.log(np.maximum(np.asarray(f0, float), TINY) / F)
+    """Control: L-BFGS-B on softmax logits with a free log-flux, ``f = exp(xi) softmax(eta)`` (the old image parametrisation, now minimising the same unconstrained ``J`` as the others,
+    so it can reach a certified point), to be scored under the new test."""
+
+    def split(f):
+        f = np.maximum(np.asarray(f, float), TINY)
+        return np.concatenate([np.log(f / f.sum()), [np.log(f.sum())]])
+
+    def image(z):
+        e = z[:-1] - z[:-1].max()
+        s = np.exp(e)
+        s /= s.sum()
+        return np.exp(z[-1]) * s, s
 
     def once(f):
-        def fun(eta):
-            e = eta - eta.max()
-            s = np.exp(e)
-            s /= s.sum()
-            fl = F * s
+        def fun(z):
+            fl, s = image(z)
             J, g = meter.vg(fl)
-            return J, fl * g - s * float(fl @ g)
+            gs = fl * g
+            return J, np.concatenate([gs - s * gs.sum(), [gs.sum()]])
 
-        res = optimize.minimize(fun, np.log(np.maximum(f, TINY) / F), jac=True, method="L-BFGS-B",
-                                callback=lambda e: meter.accept(F * np.exp(e - e.max()) / np.exp(e - e.max()).sum()),
+        res = optimize.minimize(fun, split(f), jac=True, method="L-BFGS-B", callback=lambda z: meter.accept(image(z)[0]),
                                 options=dict(maxcor=int(maxcor), maxiter=10**9, maxfun=10**9, ftol=0.0, gtol=0.0, maxls=40))
-        e = res.x - res.x.max()
-        return F * np.exp(e) / np.exp(e).sum()
+        return image(res.x)[0]
 
-    _restarting(once, meter, np.exp(eta0) * F / np.exp(eta0).sum())
+    _restarting(once, meter, np.asarray(f0, float))
 
 
 METHODS.update(lbfgsb=lbfgsb, lbfgs=lbfgs, lbfgsb_newton=lbfgsb_newton, newton_cg=newton_cg, skilling_bryan=skilling_bryan, mirror=mirror,
@@ -608,23 +617,28 @@ METHODS.update(lbfgsb=lbfgsb, lbfgs=lbfgs, lbfgsb_newton=lbfgsb_newton, newton_c
 
 
 def newton_nuisance(obj, f, *, max_steps=3, lm0=1e-9):
-    """A damped dense Newton step (up to ``max_steps``) on the nuisance block at the image ``f``: the Hessian is the data term's, damped by Levenberg until the data value falls."""
+    """A damped dense Newton step (up to ``max_steps``) on the nuisance block at the image ``f``. The damped Hessian ``H + lm I`` must be positive definite (Cholesky; ``lm`` grows tenfold
+    until it is), the trial point must lie inside the objective's ``theta_bounds()`` (if it has them) before the data term is evaluated, and the data value must not rise."""
     for _ in range(max_steps):
         g, H = obj.nuisance_gh(f)
         if not g.size:
             return
         v0 = obj.data_vg(f)[0]
         theta = obj.theta.copy()
+        lo, hi = obj.theta_bounds() if hasattr(obj, "theta_bounds") else (None, None)
         lm = lm0 * max(np.abs(np.diag(H)).max(), 1e-300)
-        for _ in range(30):
+        for _ in range(40):
             try:
-                step = -np.linalg.solve(H + lm * np.eye(len(g)), g)
-            except np.linalg.LinAlgError:
-                lm *= 10
+                cf = linalg.cho_factor(H + lm * np.eye(len(g)), lower=True)
+            except (np.linalg.LinAlgError, linalg.LinAlgError, ValueError):
+                lm = max(lm * 10, 1e-12)
                 continue
-            obj.set_theta(theta + step)
-            if obj.data_vg(f)[0] <= v0:
-                break
+            trial = theta - linalg.cho_solve(cf, g)
+            inside = np.all(np.isfinite(trial)) and (lo is None or np.all(trial >= lo)) and (hi is None or np.all(trial <= hi))
+            if inside:
+                obj.set_theta(trial)
+                if obj.data_vg(f)[0] <= v0:
+                    break
             lm = max(lm * 10, 1e-12)
         else:
             obj.set_theta(theta)
@@ -644,20 +658,22 @@ def run(name, obj, f0, *, budget_s, out=None, snap_every=30.0, max_steps=None, j
             METHODS[name](obj, meter, f, **opts)
         else:
             slice_s = meter.budget_s / int(joint_rounds)
-            while True:
-                meter.deadline = meter.elapsed() + slice_s
+            reserve = 0.0  # the last nuisance step's duration: each slice stops that early, so the final nuisance step ends inside the budget
+            while meter.elapsed() + reserve < meter.budget_s:
+                meter.deadline = min(meter.elapsed() + slice_s, meter.budget_s - reserve)
                 try:
                     METHODS[name](obj, meter, f, **opts)
                 except Budget:
-                    if meter.elapsed() > meter.budget_s:
-                        raise
+                    pass
                 except Stalled:
                     pass
                 finally:
                     meter.deadline = None
                 if meter.last is not None:
                     f = meter.last
+                t1 = meter.elapsed()
                 newton_nuisance(obj, f)
+                reserve = max(reserve, 2.0 * (meter.elapsed() - t1))
                 meter.accept(f)
     except Budget:
         pass
@@ -667,8 +683,6 @@ def run(name, obj, f0, *, budget_s, out=None, snap_every=30.0, max_steps=None, j
         reason = "stalled"
     if meter.last is None:
         meter.last = f
-    if joint:  # end on a nuisance step, so the returned (f, theta) pair is consistent in the theta block (not charged: the time is spent)
-        newton_nuisance(obj, meter.last)
     meter.snapshot()
     return RunResult(name, meter.last, reason, meter.elapsed(), meter.grads, meter.hvps, meter.geq, meter.steps, opts, meter.snaps, meter.trace, np.asarray(obj.theta, float).copy())
 
