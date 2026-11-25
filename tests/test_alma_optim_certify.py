@@ -422,3 +422,15 @@ def test_the_joint_slices_return_to_the_nuisance_step_and_end_inside_the_budget(
     assert len(calls) >= 3, (name, len(calls))
     assert res.theta[0] != 1.0
     assert max(s["t"] for s in res.snapshots) <= 3.0 * (1 + 1e-3)
+
+
+def test_kkt_w_agrees_with_virgils_with_frozen_pixels_present(virgil_chain):
+    _, obj = virgil_chain
+    rng = np.random.default_rng(5)
+    f = obj.flat() * (1.0 + 0.5 * rng.random(obj.n)) * 1.15
+    f[::7] = f.max() * 1e-8  # pixels below FROZEN of the peak: n_low > 0, so the class residuals and want_grow are exercised
+    rec = ac.Evaluator(obj).evaluate(f)
+    theirs = ac.virgil_kkt(obj, f)
+    assert rec["n_low"] > 0 and f.sum() != pytest.approx(obj.flux, rel=0.1)
+    assert rec["kkt_w"] == pytest.approx(theirs["kkt_w"], rel=1e-3)
+    # want_grow is not compared: virgil scales its tolerance by sqrt(peak/b) per pixel, ours is the flat plan §5.3 one, so the two flag different pixels by design
