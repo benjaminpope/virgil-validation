@@ -781,3 +781,21 @@
     - tests/test_detection_tier_a.py::test_injection_recovery_without_uncertainty_matches_independent_grid_search
   decision: 'raised by Carbon review of vv#282, reproduced here; whether virgil raises or documents the behaviour is for Ben (2026-11-20).'
   status: open
+
+- id: F33
+  title: ComplexVisData.read_ms refuses a Stokes-I-only measurement set (the EHT UVFITS after importuvfits)
+  objects: [virgil.radio.ComplexVisData.read_ms]
+  ruling: virgil
+  kind: 'missing feature (documented: read_ms needs a parallel-hand pair XX/YY or RR/LL and raises "no XX/YY or RR/LL polarization pair in CORR_TYPE (1,)" on a Stokes I MS; the M87* checks read the visibilities from per-ddid npz files instead)'
+  referee: mathematics (a Stokes I correlation is already the quantity read_ms forms from the pair)
+  evidence: [tests/test_m87_findings.py::test_f33_read_ms_accepts_a_stokes_i_measurement_set]
+  status: open
+
+- id: P15
+  title: BASIS's sky_map renders the xsringauss floor Gaussian on the side opposite to the one its analytic visibilities imply
+  objects: [basis]
+  ruling: external:basis
+  kind: 'convention difference (BASIS 0.1.0: in a floor-only model the rendered centroid and the centroid from the analytic visibility phases lie on opposite sides of the ring centre; the likelihood uses the visibilities, so fits are unaffected, but images rendered from posteriors (stage 2 REX) may place the floor wrongly, which could shift f_c and possibly eta)'
+  referee: mathematics (centroid from the first-order phase slope of BASIS's own analytic visibilities)
+  evidence: [tests/test_m87_findings.py::test_p15_basis_floor_gaussian_render_matches_its_visibilities]
+  status: to-raise

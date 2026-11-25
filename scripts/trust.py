@@ -66,7 +66,7 @@ ROOT_NAMES = {
     "mathematics": "mathematics", "standards": "standards", "statistics": "statistics",
     "literature": "published result", "dlux": "dLux", "pmoired": "PMOIRED", "candid": "CANDID",
     "fouriever": "fouriever", "frank": "frank / FRAP (one root)", "visr": "vis-r", "frap": "FRAP", "oimodeler": "oimodeler",
-    "ehtim": "eht-imaging", "mpol": "MPoL", "casa": "CASA", "orbitize": "orbitize!",
+    "ehtim": "eht-imaging", "mpol": "MPoL", "casa": "CASA", "orbitize": "orbitize!", "basis": "BASIS",
     "self-consistency": "virgil itself",
 }
 # metric names that state a difference or error (raw statistics such as a
@@ -414,7 +414,7 @@ UNFIXED = {"open", "to-raise", "raised"}
 # or results written by other people. Mathematics and standards are our own
 # transcriptions of the documented formula, so they cannot.
 EXTERNAL = {"pmoired", "candid", "fouriever", "orbitize", "ehtim", "mpol", "casa", "dlux", "literature",
-            "frank", "visr", "frap", "oimodeler"}
+            "frank", "visr", "frap", "oimodeler", "basis"}
 
 def depends_depths(nodes):
     """Length of the longest ``depends`` chain below each node: 0 for a node with no

@@ -114,5 +114,6 @@ nav:
           - orbitize!: method/orbitize.md
           - eht-imaging: method/ehtim.md
       - "ALMA measurement-set conventions": alma_conventions.md
+      - "EHT M87* conventions": m87_conventions.md
       - "Evidence table": evidence.md
       - "Generated results": results.md

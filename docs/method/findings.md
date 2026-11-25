@@ -35,6 +35,7 @@ Every disagreement the checks have found, how it was ruled, and where it stands.
 | <span id="F27">F27</span> | `orbit_cells.outlier_log_density` | Laplace approximation error in outlier_log_density(rescalable=True): large at the clip boundary (+3 to +6 nats when the scale is clipped), small in the interior (about -0.4 nats at n = 24, comparable to expected Laplace error) | open |
 | <span id="F28">F28</span> | `aliases.period_window`, `aliases.period_cut` | period_window and period_cut API docstrings omit the night_length lower floor applied in code and documented in orbit_methods.md | open |
 | <span id="F32">F32</span> | `detection.DetectionMC`, `detection.injection_recovery` | DetectionMC on an injection_recovery(uncertainty=False) run: max_snr (all NaN) queries return values instead of raising, and concatenate merges it with uncertainty=True runs | open |
+| <span id="F33">F33</span> | `radio.ComplexVisData.read_ms` | ComplexVisData.read_ms refuses a Stokes-I-only measurement set (the EHT UVFITS after importuvfits) | open |
 
 ## Where codes define things differently
 
@@ -88,6 +89,7 @@ Every disagreement the checks have found, how it was ruled, and where it stands.
 | <span id="P12">P12</span> | `mpol` | MPoL's default NuFFT (torchkbnufft table interpolation) is 6e-4 from the exact transform of its image at 256 pixels, and its taper buffer is float32 | documented |
 | <span id="P13">P13</span> | `oimodeler` | oimodeler's oimFastRotator places the bright pole about 180 deg from the pa input, relative to the IAU convention we expected | to-raise |
 | <span id="P14">P14</span> | `oimodeler` | oimodeler's oimFastRotator equator-on V^2 anisotropy does not follow O(omega^2) over rot = 0.01..0.04 (log-log slope 0.45 at dim = 64) | to-raise |
+| <span id="P15">P15</span> | `basis` | BASIS's sky_map renders the xsringauss floor Gaussian on the side opposite to the one its analytic visibilities imply | to-raise |
 
 ## Mistakes in our own checks
 
