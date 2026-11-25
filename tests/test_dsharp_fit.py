@@ -259,3 +259,24 @@ def test_the_engines_agree_on_a_tiny_problem_at_the_pinned_virgil():
     z["vis"] = np.exp(-(np.hypot(z["u"], z["v"]) / 2e4) ** 2) * np.ones(len(z["u"]), complex)
     e = fit.engine_agreement(va.load_npz([z]), dict(npix=16, pixel_mas=40.0, weight=1.0, ref_obs=0, box_mas=20.0, flux=1.0), log=lambda *a: None)
     assert e["engine_toeplitz"] == "toeplitz" and e["engine_direct"] == "direct" and e["pass_loss"] and e["pass_grad"]
+
+
+@pytest.mark.validates("crosscheck.dsharp", roots=["self-consistency"], kind="guard")
+@pytest.mark.parametrize("shift", [(15.0, -10.0), (-12.0, 8.0)])
+def test_offsets_only_fit_recovers_a_known_shift_to_under_a_milliarcsecond(shift):
+    pytest.importorskip("virgil.radio_toeplitz")
+    import jax
+
+    jax.config.update("jax_enable_x64", True)
+    import virgil_bridge.alma as va
+
+    rng = np.random.default_rng(0)
+    zs = []
+    for o, sh in enumerate(((0.0, 0.0), shift)):  # a resolved Gaussian (sigma 100 mas) inside the 64 x 20 mas field; the second observation is shifted
+        z = _window(rng, o, o, s=1.0, n_ant=12, n_t=3, w0=1e4)
+        q = np.hypot(z["u"], z["v"])
+        z["vis"] = (np.exp(-2 * np.pi**2 * (100.0 * MAS) ** 2 * q**2) * np.exp(-2j * np.pi * (sh[0] * MAS * z["u"] + sh[1] * MAS * z["v"]))
+                    + 0.01 * (rng.normal(size=len(q)) + 1j * rng.normal(size=len(q))))
+        zs.append(z)
+    fitted, _ = fit.offsets_only_fit(va.load_npz(zs), dict(npix=64, pixel_mas=20.0, weight=3e3, ref_obs=0, box_mas=20.0, flux=1.0), log=lambda *a: None)
+    assert np.allclose(fitted[1], shift, atol=1.0), fitted
