@@ -406,7 +406,7 @@ def build_problem(data, config, *, lam, npix=None, pixel_mas=5.0, mask=None, use
 
     ``chi2`` is the engine of the data term: ``direct`` (the NUFFT of every point; default) or ``toeplitz`` (virgil's dirty-beam form, equal to the direct
     term to ~1e-13 at a cost independent of N; config R only). With fitted offsets Toeplitz needs the prior box inside its precompute, so
-    ``offset_bound_mas`` defaults to ``TOEPLITZ_OFFSET_BOUND_MAS``. ``prob.chi2_info`` records the engine and the precompute.
+    ``offset_bound_mas`` defaults to ``TOEPLITZ_OFFSET_BOUND_MAS``. ``prob.chi2_info`` records the engine (``auto`` for the default direct request: virgil resolves it at fit, so the Toeplitz form may have run) and the precompute.
 
     ``offset_bound_mas`` (mas, default None: virgil's own default, ±3 beams of each observation, about 150 mas for IM Lup; 0.4.0's ±1/(2 q_min) is about 10^4 mas) sets the offsets' uniform prior to
     ``(-X, X)`` through ``CalibrationNuisance.priors(offset=...)``. A flat prior is flat at any bound, so the objective is unchanged
@@ -468,7 +468,7 @@ def build_problem(data, config, *, lam, npix=None, pixel_mas=5.0, mask=None, use
     if chi2 == "toeplitz":
         term, chi2_info = toeplitz_term(use, scene, nuis, npix=npix, pixel_mas=pixel_mas, mask=mask, max_offset_mas=None if offset_bound_mas is None else float(offset_bound_mas))
     else:
-        term, chi2_info = use.term(scene, nuis, mask=None if mask is None else np.asarray(mask, bool), chunk_size=chunk_size), dict(engine="direct")
+        term, chi2_info = use.term(scene, nuis, mask=None if mask is None else np.asarray(mask, bool), chunk_size=chunk_size), dict(engine="auto", note="use.term was left at virgil's chi2=\"auto\": the dirty-beam form where it is exact (e.g. one observation, enough points per pixel), else the direct NUFFT; fit decides, so this is not necessarily direct")
     terms = [term] + ([MPoLEntropy(lam, pixel_mas=pixel_mas, taper_mas=entropy_taper, **({} if f_tot is None else dict(f_tot=float(f_tot))), fixed_image=None if fixed_log_brightness is None else jnp.asarray(fixed_log_brightness, float))] if config == "R" else [])
     priors, init, bound = nuisance_sites(nuis, data, offset_bound_mas=offset_bound_mas, ref_obs=ref_obs)
     if fixed_log_brightness is None:

@@ -138,7 +138,7 @@ def main(argv=None):
     np.save(out / "image_tapered.npy", sky.astype(np.float32))
     cx.write_fits(out / "image.fits", sky, prob.pixel_mas, ra, dec, OBJECT=t["name"], ORIGIN=f"virgil R, {args.target}", TAPERMAS=float(args.taper_mas))
     res = dict(
-        target=args.target, name=t["name"], n=int(n), npix=prob.npix, pixel_mas=prob.pixel_mas, taper_mas=args.taper_mas, chi2_engine=args.chi2,
+        target=args.target, name=t["name"], n=int(n), npix=prob.npix, pixel_mas=prob.pixel_mas, taper_mas=args.taper_mas, chi2_engine=prob.chi2_info["engine"],
         image_fits="the tapered image (the model's sky; image_base.npy is the hidden image before the kernel)", f_tot_jy=flux0, start_floor=floor_info,
         lam_R=lam, ref_obs=ref, start_flux_jy=flux0, flux_jy=float(vals["cal.flux"]), gain=vals.get("cal.gain"), offset_mas=vals.get("cal.offset"),
         sigma=vals.get("cal.sigma"), obs_ids=np.asarray(data.obs_ids), ddid_ids=np.asarray(data.ddid_ids), converged=conv["converged"], convergence=conv,
