@@ -1,0 +1,73 @@
+{
+ "case": "O-B-sim",
+ "comparison": "orbit",
+ "code": "octofitter",
+ "config": "native",
+ "threads": 2,
+ "size": "full",
+ "status": "ok",
+ "t_process": 1.1269906960149,
+ "t_calib": 0.010595528,
+ "t_import": 5.733000865,
+ "t_load": 22.277363868,
+ "t_init": 79.110630605,
+ "t_cold": 772.583607415,
+ "t_warm": [
+  768.57349618
+ ],
+ "peak_footprint_mb": 2128.32,
+ "peak_rss_mb": 2128.32,
+ "baseline_mb": null,
+ "cpu_ratio": 1.8548062435627761,
+ "flags": [
+  "warm_recompiled"
+ ],
+ "n_data": 1440,
+ "n_param": 11,
+ "iterations": {
+  "t_init_per_fit": 79.110630605,
+  "t_cold_per_fit": 772.583607415,
+  "sampling_calls": 2,
+  "n_datasets": 1
+ },
+ "accuracy": {},
+ "settings": {
+  "init": "initialize!(Xoshiro(100 seed), model): prior draws -> global optimisation -> Pathfinder, 1000 draws of its approximation in the unconstrained space (inside every prior's support); octofit_pigeons: chain k starts at model.starting_points[k] (Pigeons takes the points in order; its own seed is 100 seed + k per call); not AdvancedHMC, no dense metric from the draws; pathfinder_ok = true (false: Pathfinder failed, one distinct point)",
+  "observing_geometry": "auto",
+  "phase_parameter": "\u03b8",
+  "target_accept": 0.8,
+  "sampler": "octofit_pigeons",
+  "draws": 1000,
+  "chain_method": "sequential calls",
+  "max_tree_depth": 10,
+  "case": "O-B-sim",
+  "config": "native",
+  "versions": {
+   "julia": "1.12.7",
+   "octofitter": "9.0.0"
+  },
+  "chains": 4,
+  "init_detail": {
+   "n_starting_points": 1000,
+   "pathfinder_ok": true,
+   "n_distinct_starting_points": 128,
+   "start_P_d_range": [
+    249.9863094447613,
+    249.9998593877085
+   ],
+   "start_P_d_median": 249.9992019351119
+  },
+  "mass_matrix": "dense (AdvancedHMC DenseEuclideanMetric)",
+  "barycentric_lighttime": "auto",
+  "warmup": 1000,
+  "run": "r2",
+  "jax_cache": "cold",
+  "device": "cpu",
+  "task": "orbit-native",
+  "case_id": "O-B-sim"
+ },
+ "provenance": {
+  "julia": "1.12.7"
+ },
+ "language": "julia"
+}

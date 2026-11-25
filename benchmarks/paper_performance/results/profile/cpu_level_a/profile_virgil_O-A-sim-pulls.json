@@ -1,0 +1,41 @@
+{
+ "case": "O-A-sim-pulls",
+ "config": "matched",
+ "device": "cpu",
+ "jax_devices": [
+  "cpu:0"
+ ],
+ "versions": {
+  "virgil": "unknown",
+  "jax": "0.12.0.1"
+ },
+ "n_param": 7,
+ "chains": 4,
+ "warmup": 1000,
+ "draws": 1000,
+ "calls": 500,
+ "per_call_us": {
+  "logdensity": {
+   "median_us": 37.07948781084269,
+   "min_us": 21.540006855502725
+  },
+  "grad": {
+   "median_us": 71.51399040594697,
+   "min_us": 54.7529780305922
+  },
+  "grad_vmap_4": {
+   "median_us": 108.95950254052877,
+   "min_us": 95.319002866745
+  }
+ },
+ "warm": {
+  "t_s": 40.030488852993585,
+  "t_cold_s": 12.841714523994597,
+  "steps_all_chains": 101345,
+  "steps_slowest_chain_per_draw": 30756,
+  "mean_steps": 25.33625,
+  "us_per_step_all": 394.9922428634228,
+  "us_per_step_lockstep": 1301.5505544607097,
+  "note": "the warm time covers warmup + draws; steps are counted for the draws only, so per-step figures are upper bounds"
+ }
+}

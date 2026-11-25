@@ -1,0 +1,108 @@
+{
+ "case": "I-sim-large",
+ "comparison": "imaging",
+ "code": "virgil",
+ "config": "native",
+ "threads": 1,
+ "size": "full",
+ "status": "ok",
+ "t_process": 1.0151249180053128,
+ "t_calib": 0.27404194900009315,
+ "t_import": 4.431911407998996,
+ "t_load": 0.9911267220013542,
+ "t_init": null,
+ "t_cold": 25.096336853996036,
+ "t_warm": [
+  15.55853345200012,
+  15.628022788994713,
+  15.697492577994126,
+  15.533118698003818,
+  15.534135100009735
+ ],
+ "peak_footprint_mb": 1518.356,
+ "peak_rss_mb": 1518.356,
+ "baseline_mb": null,
+ "cpu_ratio": 1.0946502078156617,
+ "flags": [],
+ "n_data": 6750,
+ "n_param": 2304,
+ "iterations": {
+  "steps": 6013
+ },
+ "accuracy": {
+  "steps": 6013,
+  "converged": true,
+  "grid_npix": [
+   41,
+   41
+  ],
+  "grid_pixel_mas": 0.2969913529922064,
+  "score": {
+   "J": 5284.647178306028,
+   "half_chi2_amp": 2237.525071763058,
+   "half_chi2_cp": 1060.146421099668,
+   "tv2": 0.0026493009139244026,
+   "flux": 1.0,
+   "n_amp": 4500,
+   "n_cp": 2250,
+   "ncc_registered": 0.881514739696555,
+   "ncc_shift_rc": [
+    3,
+    -3
+   ],
+   "ncc_unregistered": 0.3436188054843411,
+   "rms_rel_beam": 0.1363347856643477,
+   "beam_mas": 1.5443549845383082
+  }
+ },
+ "settings": {
+  "case": "I-sim-large",
+  "task": "native",
+  "reps": 5,
+  "size": "full",
+  "native": {
+   "source": "docs/imaging_rml.md of virgil at the pinned commit (the page of that name in the virgil documentation)",
+   "recipe": "starting_image(data, star=False, largest_mas=12, start='moments'), image_priors, fit(start, priors, data, [MaxEntropy(100)]) with the default method and tolerances; the page's weight (100) is used as given",
+   "start": "moments",
+   "weight": 100
+  },
+  "run": "r2",
+  "jax_cache": "cold",
+  "device": "gpu",
+  "gpu": "NVIDIA A100-SXM4-80GB",
+  "method": "native"
+ },
+ "provenance": {
+  "vv_commit": null,
+  "vv_dirty": false,
+  "virgil_pin": "09b268521072a83f73bc0a77defa6485db270c7b",
+  "versions": {
+   "virgil-astro": null,
+   "jax": "0.12.0.1",
+   "jaxlib": "0.12.0.1",
+   "numpyro": "0.22.0",
+   "pmoired": "26.10.1",
+   "ehtim": null,
+   "numpy": "2.5.4",
+   "scipy": "1.18.1",
+   "arviz": null,
+   "astropy": "8.0.2"
+  },
+  "python": "3.12.7",
+  "macos": "",
+  "chip": "AMD EPYC 7543 32-Core Processor",
+  "cpu_count": 64,
+  "thread_env": {
+   "OMP_NUM_THREADS": "1",
+   "OPENBLAS_NUM_THREADS": "1",
+   "VECLIB_MAXIMUM_THREADS": "1",
+   "MKL_NUM_THREADS": "1",
+   "NUMEXPR_NUM_THREADS": "1",
+   "XLA_FLAGS": "--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1 --xla_cpu_parallel_codegen_split_count=1 --xla_cpu_use_xnnpack=false --xla_cpu_enable_concurrency_optimized_scheduler=false",
+   "JAX_PLATFORMS": "cuda",
+   "JULIA_NUM_THREADS": "1"
+  },
+  "data_manifest_sha256": "9ff0c4e5432d399dab1b2db62ae15a4b3066af304147876be59a21020f540205"
+ },
+ "language": "python"
+}

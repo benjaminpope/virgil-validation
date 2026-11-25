@@ -1,0 +1,129 @@
+{
+ "case": "O-A-real",
+ "comparison": "orbit",
+ "code": "virgil",
+ "config": "matched",
+ "threads": 1,
+ "size": "full",
+ "status": "ok",
+ "t_process": 2.8729430630000934,
+ "t_calib": 0.2585228609996193,
+ "t_import": 2.662271959999998,
+ "t_load": 0.00047752499995112885,
+ "t_init": 5.204087103999882,
+ "t_cold": 12.341064540000843,
+ "t_warm": [
+  3.5945545630002016
+ ],
+ "peak_footprint_mb": 1326.228,
+ "peak_rss_mb": 1326.228,
+ "baseline_mb": null,
+ "cpu_ratio": 1.2182631924680052,
+ "flags": [
+  "threads_not_held"
+ ],
+ "n_data": 24,
+ "n_param": 7,
+ "iterations": {
+  "sampling_calls": 2,
+  "total_leapfrog_steps_first_call": 66544,
+  "n_datasets": 1,
+  "t_init_per_fit": 5.204087103999882,
+  "t_cold_per_fit": 12.341064540000843
+ },
+ "accuracy": {
+  "likelihood_mismatch_rel": null,
+  "n_divergent": 2,
+  "mean_steps_per_iteration": 16.636
+ },
+ "settings": {
+  "config": "matched",
+  "phase_parameter": "M0",
+  "warmup": 1000,
+  "draws": 1000,
+  "chains": 4,
+  "chain_method": "vectorized",
+  "target_accept": 0.8,
+  "max_tree_depth": 10,
+  "mass_matrix": "dense (matches Octofitter: AdvancedHMC DenseEuclideanMetric, sampling.jl)",
+  "case": "O-A-real",
+  "versions": {
+   "virgil": "unknown",
+   "numpyro": "0.22.0",
+   "jax": "0.12.0.1"
+  },
+  "init": "starting_orbits (Thiele-Innes grid search, n_best = chains) over trial_periods; trial_periods = frequency midpoints of period_grid cells over the period prior's central [q, 1-q] quantile interval (a prior narrower than one phase-coherence cell: equal-prior-mass strata icdf((j+1/2)/chains)); every scalar start clipped into its own prior's [q, 1-q] interval; q = 0.001; deterministic, no random numbers; here 4 trial period(s) in [10.657301, 10.659601] d, clipped sites (chains): none",
+  "init_detail": {
+   "q": 0.001,
+   "period_window_d": [
+    10.655360852645737,
+    10.661541147354262
+   ],
+   "n_trial_periods": 4,
+   "trial_period_range_d": [
+    10.657300651664,
+    10.659601348335999
+   ],
+   "start_P_d": [
+    10.658769639174977,
+    10.658132360825022,
+    10.659601348335999,
+    10.657300651664
+   ],
+   "chains_clipped_by_site": {},
+   "start_chi2": [
+    112.78899968178007,
+    116.0381239616806,
+    134.02435634756222,
+    145.77011405029154
+   ]
+  },
+  "init_start_P_range_all_datasets_d": [
+   10.657300651664,
+   10.659601348335999
+  ],
+  "n_datasets": 1,
+  "t_cold_note": "t_init and t_cold are sums over n_datasets fits (t_cold_per_fit = t_cold / n_datasets); t_warm is ONE fit (dataset 0)",
+  "sampler": "one MCMC(jit_model_args=True) reused for every dataset (Level A: data are a model argument)",
+  "init_chains_clipped_all_datasets": 0,
+  "closure_phase_noise": null,
+  "run": "r2",
+  "jax_cache": "cold",
+  "device": "cpu",
+  "task": "orbit-matched",
+  "case_id": "O-A-real"
+ },
+ "provenance": {
+  "vv_commit": null,
+  "vv_dirty": false,
+  "virgil_pin": "09b268521072a83f73bc0a77defa6485db270c7b",
+  "versions": {
+   "virgil-astro": null,
+   "jax": "0.12.0.1",
+   "jaxlib": "0.12.0.1",
+   "numpyro": "0.22.0",
+   "pmoired": "26.10.1",
+   "ehtim": null,
+   "numpy": "2.5.4",
+   "scipy": "1.18.1",
+   "arviz": null,
+   "astropy": "8.0.2"
+  },
+  "python": "3.12.7",
+  "macos": "",
+  "chip": "AMD EPYC 7543 32-Core Processor",
+  "cpu_count": 64,
+  "thread_env": {
+   "OMP_NUM_THREADS": "1",
+   "OPENBLAS_NUM_THREADS": "1",
+   "VECLIB_MAXIMUM_THREADS": "1",
+   "MKL_NUM_THREADS": "1",
+   "NUMEXPR_NUM_THREADS": "1",
+   "XLA_FLAGS": "--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1 --xla_cpu_parallel_codegen_split_count=1 --xla_cpu_use_xnnpack=false --xla_cpu_enable_concurrency_optimized_scheduler=false",
+   "JAX_PLATFORMS": "cpu",
+   "JULIA_NUM_THREADS": "1"
+  },
+  "data_manifest_sha256": "4955a5ee36e41c94fd293824f09cafeef6f0d40df1861c34f44a44b336966982"
+ },
+ "language": "python"
+}

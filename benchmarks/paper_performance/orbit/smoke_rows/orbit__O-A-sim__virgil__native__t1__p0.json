@@ -1,0 +1,83 @@
+{
+ "case": "O-A-sim",
+ "comparison": "orbit",
+ "code": "virgil",
+ "config": "native",
+ "threads": 1,
+ "size": "tiny",
+ "status": "ok",
+ "t_process": 4.374339332992676,
+ "t_calib": 0.15914029197301716,
+ "t_import": 3.5303751250030473,
+ "t_load": 0.0005334159941412508,
+ "t_init": 5.2851997499819845,
+ "t_cold": 16.808063208998647,
+ "t_warm": [],
+ "peak_footprint_mb": 549.635536,
+ "peak_rss_mb": 611.844096,
+ "baseline_mb": null,
+ "cpu_ratio": 1.0728520091473377,
+ "flags": [],
+ "n_data": 20,
+ "n_param": 7,
+ "iterations": {
+  "sampling_calls": 1,
+  "total_leapfrog_steps_first_call": 56324
+ },
+ "accuracy": {
+  "n_divergent": 0,
+  "mean_steps_per_iteration": 70.405
+ },
+ "settings": {
+  "config": "native",
+  "phase_parameter": "theta",
+  "warmup": 200,
+  "draws": 200,
+  "chains": 4,
+  "chain_method": "sequential",
+  "target_accept": 0.8,
+  "max_tree_depth": 10,
+  "mass_matrix": "dense (matches Octofitter: AdvancedHMC DenseEuclideanMetric, sampling.jl)",
+  "case": "O-A-sim",
+  "versions": {
+   "virgil": "0.4.1",
+   "numpyro": "0.22.0",
+   "jax": "0.12.0.1"
+  },
+  "init": "starting_orbits (period_grid over the prior window, n_best = chains)",
+  "closure_phase_noise": null,
+  "smoke": true
+ },
+ "provenance": {
+  "vv_commit": "6c164719259755ed73b72f1b37abae90eedcab20",
+  "vv_dirty": false,
+  "virgil_pin": "c2be8278a4d6549282b3cf199852101929df0462",
+  "versions": {
+   "virgil-astro": "0.4.1",
+   "jax": "0.12.0.1",
+   "jaxlib": "0.12.0.1",
+   "numpyro": "0.22.0",
+   "pmoired": "26.10.1",
+   "ehtim": null,
+   "numpy": "2.5.5",
+   "scipy": "1.18.1",
+   "arviz": "1.3.0",
+   "astropy": "8.0.3"
+  },
+  "python": "3.12.12",
+  "macos": "26.7.2",
+  "chip": "Apple M4",
+  "cpu_count": 10,
+  "thread_env": {
+   "OMP_NUM_THREADS": "1",
+   "OPENBLAS_NUM_THREADS": "1",
+   "VECLIB_MAXIMUM_THREADS": "1",
+   "MKL_NUM_THREADS": "1",
+   "NUMEXPR_NUM_THREADS": "1",
+   "XLA_FLAGS": "--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1",
+   "JAX_PLATFORMS": "cpu",
+   "JULIA_NUM_THREADS": "1"
+  },
+  "data_manifest_sha256": "4955a5ee36e41c94fd293824f09cafeef6f0d40df1861c34f44a44b336966982"
+ }
+}
