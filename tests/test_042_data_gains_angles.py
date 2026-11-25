@@ -595,7 +595,17 @@ def test_multipole_field_042_origin_taper_analytical_variance_and_nr_invariance(
     tanh(r / length_r)^|m| using physical length_r (F25): only m=0 is free at
     r=0, the azimuthal m != 0 variance matches sigma^2 * sum_{m!=0} S(m) tanh(r/ell_r)^{2|m|} / sum S(m)
     both analytically (across n_r = 16 and n_r = 31) and over 512 Monte Carlo
-    draws, and an annulus (r_min_mas > 0) stays stationary at its inner edge."""
+    draws, and an annulus (r_min_mas > 0) stays stationary at its inner edge.
+
+    Basis: the expected variance is the formula written in this test, the Matern
+    azimuthal spectrum ``S(m)`` times ``tanh(r / length_r)^(2|m|)``, which is virgil's
+    own stated taper (F25, motivated by a smooth field going as ``r^|m|`` at the
+    origin). So this checks that ``MultipoleField`` implements that taper and spectrum,
+    and that the result does not depend on ``n_r``; the taper itself is a design choice
+    that is not checked against any other package. The radial correlation factor, the
+    polar-to-sky mapping and the ``pa``/``inc`` orientation are not covered here;
+    ``tests/test_alma_gp.py`` covers the last two.
+    """
     length_r, length_theta, nu_th, sigma = 6.0, 0.8, 1.5, 1.2
     n_th = 32
     r_max = 15.0

@@ -21,12 +21,15 @@ propagation, and oimodeler (ledger P13 and P14).
      versus ATLAS9 ``F_lambda(T_eff, log g)`` surface spectra, and isotropic
      emission versus spherical SATLAS limb darkening. Wrong orientations
      (``pa + 90``, ``pa + 180``, and ``-pa``) miss by > 50 deg.
-2. Optical wavefront propagation (``roots=["dlux"]``, without claiming
-   ``property="pole_pa"`` because ``crosscheck.elr.cloud`` supplies the sky
-   rotation):
+2. Optical wavefront propagation (``roots=["mathematics"]``: the sky rotation,
+   and the surface itself, come from our own ``crosscheck.elr.cloud``, so this
+   claims neither ``property="pole_pa"`` nor ``dLux`` as a root):
    * Propagating an inclined ELR11 surface cloud through ``dLux``'s 7-hole
      non-redundant mask reproduces ``GravityDarkenedStar`` across all 21
-     baselines and 35 closure phases.
+     baselines and 35 closure phases. ``dLux`` is only the Fourier optics around
+     our own cloud, so this checks that virgil's visibilities are the Fourier
+     transform of that surface through the mask; the surface and its ``pole_pa``
+     orientation are virgil's documented convention, confirmed in part 1 by PMOIRED.
 3. Two differences from what we expected in ``oimodeler.oimFastRotator`` (ledger
    ``P13`` and ``P14``, each pinned by its own strict xfail at ``dim=64``):
    * ``P13``: the visible pole's position angle lands about 180 deg from the
@@ -242,7 +245,7 @@ def _eval_virgil_on_nrm(obs, pa_deg):
 @pytest.mark.external
 @pytest.mark.validates(
     "virgil.models.GravityDarkenedStar",
-    roots=["dlux"],
+    roots=["mathematics"],  # dLux supplies only the optics; the cloud and pole_pa are ours (crosscheck.elr)
     headline="max_abs_dCP_deg",
 )
 def test_gravity_darkened_star_matches_dlux_wavefront_propagation(dlux_rotator_observables):
@@ -268,7 +271,7 @@ def test_gravity_darkened_star_matches_dlux_wavefront_propagation(dlux_rotator_o
         ("minus_pa", -ROTATOR_PA),
     ],
 )
-@pytest.mark.validates("virgil.models.GravityDarkenedStar", roots=["dlux"], kind="control")
+@pytest.mark.validates("virgil.models.GravityDarkenedStar", roots=["mathematics"], kind="control")
 def test_gravity_darkened_star_wrong_pa_fails_against_dlux(dlux_rotator_observables, label, wrong_pa):
     """Rotated models (pa + 90, pa + 180, -pa) miss dLux's closure phases by
     > 5 deg (> 60x the optical discretization discrepancy)."""

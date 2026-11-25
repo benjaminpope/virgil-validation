@@ -265,7 +265,17 @@ def test_linear_image_sqrt_weights_and_system_flux_controls():
 def test_scaled_normalizes_by_template_reference_and_freezes_template():
     """Scaled(template, ratio) equals ratio * template(wavel) / template() at
     every wavelength regardless of template's own normalization, freezes
-    gradients wrt template leaves, and weights chromatic Systems properly."""
+    gradients wrt template leaves, and weights chromatic Systems properly.
+
+    Basis: the expected values are the defining formula ``ratio * template(wavel)
+    / template()``, evaluated with virgil's own ``PowerLaw`` and ``Sum`` (so this
+    pins ``Scaled``'s normalization and its frozen template, not the template
+    shapes, which are other nodes), the analytic derivative of the power law with
+    respect to ``ratio``, and the flux-weighted sum of our own ``sky.vis_point``
+    point-source visibilities. It is arithmetic against virgil's own definition of
+    ``Scaled`` (flux fixed at the reference wavelength by ``template()``); no
+    other package implements that convention.
+    """
     wls = np.linspace(1.6e-6, 2.4e-6, 41)
     tpl_pl = sp.PowerLaw(0.37, index=-2.4, wavel0=2.05e-6)
     tpl_sum = sp.Sum(
