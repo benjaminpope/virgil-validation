@@ -729,4 +729,6 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
-    main()
+    res = main()
+    # a failed G1 stops the afterok chain of the next stages (plan section 3: stop and return to Ben)
+    raise SystemExit(3 if isinstance(res, dict) and res.get("mode") == "probe" and not res["gate"]["G1"] else 0)
