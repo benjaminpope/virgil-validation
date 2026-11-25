@@ -443,7 +443,8 @@ def test_prepared_data_follow_the_probe_exactly(virgil_chain, tmp_path):
     import types
 
     script = pathlib.Path(__file__).resolve().parents[1] / "scripts" / "alma_optim_s2.py"
-XX        pytest.skip("scripts/dsharp_fit.py (vv#293) is not in this tree")
+    if "def prepared_arrays" not in (script.parent / "dsharp_fit.py").read_text():
+        pytest.skip("dsharp_fit.prepared_arrays (vv#293) is not in this tree")
     spec = importlib.util.spec_from_file_location("alma_optim_s2", script)
     drv = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(drv)
