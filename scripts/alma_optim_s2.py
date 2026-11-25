@@ -8,7 +8,7 @@
     alma_optim_s2.py summary   --out DIR                       the table and gate G2's choice
 
 Objective, identical for all methods: ``J(f) = 1/2 chi2(f) + MaxEntropy(w)`` on ``LinearImage`` sqrt pixels with the explicit Toeplitz chi^2, flat default image, 1028^2 at 5 mas,
-``w0`` = 3400 and 30 w0 (``--w0``), weights rescaled by the model-free scale (``--shat DIR``, s = 1 after). Tier A holds the nuisances at S1's values (``--nuisance-json``: site name -> values,
+``w0`` = 3400 and 30 w0 (``--w0``), weights and pre-alignment as the production driver has them (``--probe probe.json``: ``dsharp_fit.prepared_arrays``; or ``--shat DIR`` on the laptop path), s = 1 after. Tier A holds the nuisances at S1's values (``--nuisance-json``: site name -> values,
 default: nominal); tier B fits gains and offsets (gradient-only methods alternate with a dense Newton step on that block). The start is flat (F / N) or the 1 arcsec Gaussian with floor.
 Every run has its own stop disabled, a firm ``--budget`` (default 1200 s) and writes a snapshot every ``--snap-every`` seconds (the checkpoints: a killed job keeps its last point); ``score``
 judges them afterwards (``alma_certify``). ``meta.json`` carries both commits (``provenance``). A run that hits its step cap is failed. This script does not touch ``dsharp_fit.py``.
@@ -79,6 +79,33 @@ def runs(w0=W0):
 # ---------------------------------------------------------------- the problem
 
 
+def prepared_data(args):
+    """``(data, ref_obs, flux, alpha)``. With ``--probe probe.json`` (the S1 probe of the target), exactly the data the production driver fits: ``dsharp_fit.prepared_arrays`` (the probe's
+    per-window weight rescale, s = 1 after, then every observation pre-aligned by its model-free shift), the probe's reference observation, the spectral index it fixed, and the start flux
+    ``auto_flux`` of the prepared data; G1 must have passed and no observation may be outside the Toeplitz box. Without it (the toy and laptop path): ``--shat`` rescales the weights."""
+    import virgil_bridge.alma as va
+    import virgil_bridge.alma_lambda as vl
+
+    if args.probe:
+        sys.path.insert(0, str(ROOT / "scripts"))
+        import dsharp_fit as dfit  # PR-A (vv#293): the one place the production data are prepared
+
+        probe = json.loads(pathlib.Path(args.probe).read_text())
+        if probe.get("gate", {}).get("G1") is not True:
+            raise SystemExit(f"the probe's gate G1 did not pass ({probe.get('gate')}): S2 does not run")
+        if probe["offset_plan"].get("drop"):
+            raise SystemExit(f"the probe drops observations {probe['offset_plan']['drop']} (offsets outside the Toeplitz box)")
+        data = va.load_npz(dfit.prepared_arrays(dfit.load_arrays(args.data), probe))
+        flux = dfit.ds.auto_flux(np.asarray(data.u), np.asarray(data.v), np.asarray(data.vis), np.asarray(data.weight))
+        return data, probe["ref_obs"], flux, float(probe["alpha"]["alpha_fixed"])
+    data = va.load_dir(args.data)
+    if args.shat:
+        shat = va.read_shat(args.shat, int(np.asarray(data.ddid).max()) + 1)
+        data = dataclasses.replace(data, weight=np.asarray(data.weight, float) / shat[np.asarray(data.ddid)] ** 2)  # s = 1 after the rescale
+    ref, _ = vl.reference_obs(data)
+    return data, ref, vl.flux_scale(data), False
+
+
 def load(args, *, npix=None, pixel_mas=None):
     """``(objective, flux, data)`` for the run's data and tier."""
     import jax
@@ -88,17 +115,12 @@ def load(args, *, npix=None, pixel_mas=None):
     import virgil_bridge.alma_certify as ac
     import virgil_bridge.alma_lambda as vl
 
-    data = va.load_dir(args.data)
-    if args.shat:
-        shat = va.read_shat(args.shat, int(np.asarray(data.ddid).max()) + 1)
-        data = dataclasses.replace(data, weight=np.asarray(data.weight, float) / shat[np.asarray(data.ddid)] ** 2)  # s = 1 after the rescale
-    ref, _ = vl.reference_obs(data)
-    flux = vl.flux_scale(data)
+    data, ref, flux, alpha = prepared_data(args)
     npix, px = npix or NPIX, pixel_mas or PIXEL_MAS
     nui = json.loads(pathlib.Path(args.nuisance_json).read_text()) if args.nuisance_json else {}
     joint = args.tier == "B"
     prob = ac.build_s2_problem(data, npix=npix, pixel_mas=px, flux=flux, ref_obs=ref, gains=joint or any("gain" in k for k in nui), offsets=joint or any("offset" in k for k in nui),
-                               max_offset_mas=args.max_offset_mas)
+                               max_offset_mas=args.max_offset_mas, alpha=alpha)
     free = tuple(prob.nuisance.defaults()) if joint else ()
     obj = ac.VirgilObjective(prob, args.w0 * args.weight_mult, free=free, fixed={k: np.asarray(v) for k, v in nui.items()})
     return obj, flux, data
@@ -154,17 +176,12 @@ def cmd_tune(args):
 
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
-    data = va.load_dir(args.data)
-    if args.shat:  # the same weights as `load`: s = 1 after the rescale
-        shat = va.read_shat(args.shat, int(np.asarray(data.ddid).max()) + 1)
-        data = dataclasses.replace(data, weight=np.asarray(data.weight, float) / shat[np.asarray(data.ddid)] ** 2)
+    data, ref0, flux, alpha = prepared_data(args)  # the same data as `load`
     npix, px = 256, NPIX * PIXEL_MAS / 256
-    flux = vl.flux_scale(data)
     truth = synthetic_truth(npix, px, flux)
     vis = syn.noisy(syn.model_visibilities(data, truth, px), np.asarray(data.weight, float), np.random.default_rng(0))
     sdata = dataclasses.replace(data, vis=vis)
-    ref, _ = vl.reference_obs(sdata)
-    prob = ac.build_s2_problem(sdata, npix=npix, pixel_mas=px, flux=flux, ref_obs=ref)
+    prob = ac.build_s2_problem(sdata, npix=npix, pixel_mas=px, flux=flux, ref_obs=ref0, alpha=False)  # the synthetic visibilities carry no spectral index
     obj = ac.VirgilObjective(prob, args.w0)
     ev = ac.Evaluator(obj)
     best = {}
@@ -353,6 +370,7 @@ def main(argv=None):
     p.add_argument("stage", choices=("plan", "tune", "reference", "run", "score", "summary"))
     p.add_argument("--data")
     p.add_argument("--out", required=True)
+    p.add_argument("--probe", default=None, help="the S1 probe.json of the target: the data are prepared exactly as dsharp_fit does (weights, pre-alignment, alpha, reference observation)")
     p.add_argument("--shat", default=None, help="directory of ddid_NN.json: weights rescaled by the model-free s^2, s = 1 after")
     p.add_argument("--nuisance-json", default=None, help="S1's nuisance values (site -> values), held fixed in tier A, the start of tier B")
     p.add_argument("--max-offset-mas", type=float, default=20.0)

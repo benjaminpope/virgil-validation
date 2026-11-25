@@ -434,3 +434,31 @@ def test_kkt_w_agrees_with_virgils_with_frozen_pixels_present(virgil_chain):
     assert rec["n_low"] > 0 and f.sum() != pytest.approx(obj.flux, rel=0.1)
     assert rec["kkt_w"] == pytest.approx(theirs["kkt_w"], rel=1e-3)
     # want_grow is not compared: virgil scales its tolerance by sqrt(peak/b) per pixel, ours is the flat plan §5.3 one, so the two flag different pixels by design
+
+
+def test_prepared_data_follow_the_probe_exactly(virgil_chain, tmp_path):
+    """``--probe``: weights rescaled by the probe's s^2, observations pre-aligned by its shifts, the probe's reference observation and fixed alpha (needs dsharp_fit.py, PR-A)."""
+    import importlib.util
+    import pathlib
+    import types
+
+    script = pathlib.Path(__file__).resolve().parents[1] / "scripts" / "alma_optim_s2.py"
+XX        pytest.skip("scripts/dsharp_fit.py (vv#293) is not in this tree")
+    spec = importlib.util.spec_from_file_location("alma_optim_s2", script)
+    drv = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(drv)
+    cols = toy_columns()
+    for d in np.unique(cols["ddid"]):
+        s = cols["ddid"] == d
+        np.savez(tmp_path / f"ddid_{d:02d}.npz", **{k: (v[s] if k not in ("ddid", "obsid") else int(v[s][0])) for k, v in cols.items()})
+    probe = dict(gate=dict(G1=True), offset_plan=dict(drop=[]), ref_obs=1, alpha=dict(alpha_fixed=2.0),
+                 weights={str(d): dict(s2=2.0, per_bin=False, edges=[], s2_bins=[]) for d in range(4)}, shifts_mas={"0": [3.0, -2.0]})
+    pj = tmp_path / "probe.json"
+    import json
+
+    pj.write_text(json.dumps(probe))
+    args = types.SimpleNamespace(probe=str(pj), data=str(tmp_path), shat=None)
+    data, ref, flux, alpha = drv.prepared_data(args)
+    assert ref == 1 and alpha == 2.0 and flux > 0
+    assert np.allclose(np.sort(np.asarray(data.weight)), np.sort(cols["weight"] / 2.0))
+    assert np.asarray(data.vis).size == cols["vis"].size

@@ -250,7 +250,7 @@ def compare_fits(evaluator, ref, other, *, theta_ref=None, theta_other=None):
 # ---------------------------------------------------------------- the objective on a virgil problem
 
 
-def build_s2_problem(data, *, npix, pixel_mas, flux, ref_obs, gains=False, offsets=False, max_offset_mas=20.0):
+def build_s2_problem(data, *, npix, pixel_mas, flux, ref_obs, gains=False, offsets=False, max_offset_mas=20.0, alpha=False):
     """``alma_lambda.Problem`` for S2: ``LinearImage`` sqrt pixels (flux owned by the pixels, ``reference_flux=flux``), the explicit Toeplitz chi^2, scales fixed
     (``sigmas=False``), gains and offsets fitted or not. With offsets the Toeplitz precompute spreads the box ``+/- max_offset_mas``."""
     import numpyro.distributions as dist
@@ -265,7 +265,7 @@ def build_s2_problem(data, *, npix, pixel_mas, flux, ref_obs, gains=False, offse
     def scene(values):
         return LinearImage(values["pixels"], pixel_mas, dra=shift, ddec=shift, ft="auto", parametrization="sqrt", reference_flux=flux)
 
-    nuis = CalibrationNuisance(data, ref_obs=ref_obs, alpha=False, gains=gains, offsets=offsets, sigmas=False, fit_flux=False)
+    nuis = CalibrationNuisance(data, ref_obs=ref_obs, alpha=alpha, gains=gains, offsets=offsets, sigmas=False, fit_flux=False)
     term, _ = va.toeplitz_term(data, scene, nuis, npix=npix, pixel_mas=pixel_mas, mask=None, max_offset_mas=float(max_offset_mas))  # resolved Toeplitz term also without offsets
     priors = {"pixels": dist.ImproperUniform(dist.constraints.real, (), event_shape=(npix, npix))}
     if gains or offsets:
