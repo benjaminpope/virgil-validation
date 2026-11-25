@@ -260,8 +260,10 @@ class VirgilObjective(ao.Objective):
         if not jax.config.jax_enable_x64:
             raise RuntimeError("float64 is required: set jax_enable_x64 before building the problem")
         self.prob = prob
+        self.term = getattr(prob, "term", None) or prob.terms[0]  # a Problem has one, dsharp_fit's production namespace a list
+        nuisance = getattr(prob, "nuisance", None) or prob.nuis
         super().__init__(prob.npix**2, prob.flux, weight)
-        defaults = {k: jnp.asarray(v, float) for k, v in prob.nuisance.defaults().items()}
+        defaults = {k: jnp.asarray(v, float) for k, v in nuisance.defaults().items()}
         fixed = {**defaults, **{k: jnp.asarray(v, float) for k, v in (fixed or {}).items()}}
         free = tuple(free)
         self.layout, a = [], 0
@@ -282,7 +284,7 @@ class VirgilObjective(ao.Objective):
             return v
 
         def half(f, theta):
-            return 0.5 * prob.term.full_chi2_and_log_norm(values(f, theta))[0]
+            return 0.5 * self.term.full_chi2_and_log_norm(values(f, theta))[0]
 
         self._vg = jax.jit(jax.value_and_grad(half))
         gr = jax.grad(half)
@@ -358,7 +360,7 @@ def virgil_kkt(objective, f):
     from virgil.imaging import MaxEntropy
 
     reg = MaxEntropy(float(objective.weight))
-    rep = kkt_report(fit_result(objective, f), objective.prob.priors, (), [reg], likelihoods=[objective.prob.term], weight=float(objective.weight))
+    rep = kkt_report(fit_result(objective, f), objective.prob.priors, (), [reg], likelihoods=[objective.term], weight=float(objective.weight))
     (img,) = rep["images"].values()
     return dict(kkt_w=float(img["kkt_w"]), band_limit=float(img.get("band_limit", np.nan)), want_grow=float(img["want_grow"]), converged=bool(rep["converged"]), report=rep)
 
@@ -378,3 +380,144 @@ def provenance(env=None):
         src = dict(commit=pathlib.Path(pinned).parent.name, url=pinned, dirty=False)
     return dict(virgil_commit=src.get("commit"), virgil_dirty=src.get("dirty"), virgil_source=src.get("url"),
                 validation_commit=meta.own_commit() or env.get("PIN_COMMIT"), pins=env.get("PIN_DESC"), when=time.strftime("%Y-%m-%dT%H:%M:%S%z"))
+
+
+# ---------------------------------------------------------------- the production hook: `dsharp_fit.py --certify alma_certify:certify`
+
+ENV_RUNNER_UP, ENV_BUDGET, ENV_BEAM, ENV_APERTURE = "ALMA_CERTIFY_RUNNER_UP", "ALMA_CERTIFY_BUDGET_S", "ALMA_CERTIFY_BEAM_MAS", "ALMA_CERTIFY_APERTURE_MAS"
+C5_RTOL = 1e-10
+C6_EDGE = 0.05
+
+
+def production_objective(prob, values):
+    """The ``VirgilObjective`` of dsharp_fit's production problem (its ``terms``, ``nuis``, ``lam``, ``init``) at ``values``: every fitted site but the pixels is a free nuisance."""
+    free = tuple(k for k in prob.init if k != "pixels" and k in values)
+    return VirgilObjective(prob, float(prob.lam), free=free, fixed={k: np.asarray(values[k], float) for k in free})
+
+
+def _flux_pixels(values):
+    return np.asarray(values["pixels"], float).ravel() ** 2
+
+
+def _converge(obj, method, f0, theta0, ev, *, budget_s, check_s):
+    """Reconverge to the stop test from ``f0`` at ``theta0`` with S2 method ``method``: the method runs in slices of ``check_s``, a Newton-CG polish and the evaluator follow each, and the
+    run ends at the first certified slice or at ``budget_s``. Returns ``(f, theta, record, seconds)``."""
+    obj.set_theta(theta0)
+    f, spent, rec = np.asarray(f0, float), 0.0, None
+    while spent < budget_s:
+        res = ao.run(method, obj, f, budget_s=min(check_s, budget_s - spent))
+        spent += res.wall
+        f = res.f
+        obj.set_theta(res.theta)
+        f, _ = ao.polish(obj, f, rounds=20)
+        rec = ev.evaluate(f, res.theta)
+        if rec["certified"]:
+            break
+    return f, np.array(obj.theta, float), rec, spent
+
+
+def _restart_row(ev, f_ref, th_ref, f, th, rec, spent):
+    cmp = compare_fits(ev, f_ref, f, theta_ref=th_ref, theta_other=th)
+    return dict(cmp, certified=bool(rec["certified"]), seconds=float(spent), kkt_w=rec["kkt_w"])
+
+
+def _far_field(obj, f, aperture_mas, n_ann=8):
+    n, px = obj.prob.npix, obj.prob.pixel_mas
+    c = (np.arange(n) - (n - 1) / 2.0) * px
+    r = np.hypot(c[:, None], c[None, :]).ravel()
+    flux = float(np.sum(f))
+    edges = np.linspace(0.0, float(np.max(np.abs(c))), n_ann + 1)
+    prof = [float(np.sum(f[(r >= a) & (r < b)]) / flux) for a, b in zip(edges[:-1], edges[1:])]
+    return dict(aperture_mas=float(aperture_mas), flux_beyond=float(np.sum(f[r > aperture_mas]) / flux), profile_edges_mas=edges.tolist(), profile_flux_fraction=prof)
+
+
+def certify(prob, values, data, result, out):
+    """C1 to C6 of plan section 5.4 at the selected rung: the signature ``dsharp_fit.py --certify module:function`` calls, ``certify(prob=, values=, data=, result=, out=)``.
+
+    C1 the stop test (section 5.3 tests 1-4) at ``values``; C2 test 2 (far-field classes) plus the flux beyond ``ALMA_CERTIFY_APERTURE_MAS`` (default 0.8 of the half field) with its radial profile;
+    C3 three restarts (the 1 arcsec Gaussian with floor image start, offsets +/-10 mas and gains +/-5% with opposite signs), taken from ``values_restart_<name>.npz`` in ``out`` when the driver
+    wrote them (s5) and otherwise run here with the method named by ``result['args']['optimiser']`` if it is an S2 method, else ``lbfgsb``; C4 the converged image perturbed by 0.5 dex of
+    log-normal noise and reconverged with G2's runner-up (``ALMA_CERTIFY_RUNNER_UP``, default ``lbfgsb``); C5 the direct NUFFT at eps 1e-12 against the Toeplitz loss (1e-10 relative);
+    C6 ``at_bound_report`` and ``offset_bound_report``. Returns a JSON-able dict with ``certified`` (all of C1 to C6) and one entry per check; reconvergence is bounded by ``ALMA_CERTIFY_BUDGET_S``
+    (default 1200 s) per restart. A failed check never raises: it is recorded and ``certified`` is false."""
+    import os
+    import pathlib
+
+    from . import alma as va
+
+    out = pathlib.Path(out)
+    args = (result or {}).get("args", {}) or {}
+    budget = float(os.environ.get(ENV_BUDGET, 1200.0))
+    runner_up = os.environ.get(ENV_RUNNER_UP, "lbfgsb")
+    main_method = args.get("optimiser") if args.get("optimiser") in ao.METHODS else "lbfgsb"
+    for m in (runner_up, main_method):
+        if m not in ao.METHODS:
+            raise ValueError(f"{m!r} is not an S2 method: {sorted(ao.METHODS)}")
+    obj = production_objective(prob, values)
+    px, npix = obj.prob.pixel_mas, obj.prob.npix
+    from scipy.ndimage import gaussian_filter
+
+    sigma = float(os.environ.get(ENV_BEAM, 35.0)) / 2.3548 / px
+    ev = Evaluator(obj, beam=lambda f: gaussian_filter(np.asarray(f, float).reshape(npix, npix), sigma, mode="constant"))
+    f_ref, th_ref = _flux_pixels(values), np.array(obj.theta, float)
+    ev.set_reference(f_ref, th_ref)
+    rec = ev.evaluate(f_ref, th_ref)
+    report = dict(method=main_method, runner_up=runner_up, budget_s=budget, provenance=provenance())
+    report["C1"] = dict(passed=bool(rec["certified"]), tests=rec["tests"], kkt_w=rec["kkt_w"], decrement=rec["decrement"], decrement_threshold=rec["decrement_threshold"], nuisance_decrement=rec["nuisance_decrement"],
+                        classes={k: rec[k] for k in ("res_hi", "res_mid", "res_low", "want_grow", "zero_violation")}, band_limit=rec.get("band_limit"))
+    aperture = float(os.environ.get(ENV_APERTURE, 0.8 * npix * px / 2.0))
+    report["C2"] = dict(passed=bool(rec["tests"]["classes"]), **_far_field(obj, f_ref, aperture))
+
+    def restarts():
+        rows, f0 = {}, {}
+        f0["image_gaussian"], t0 = gaussian_floor_start(npix, px, obj.flux), th_ref
+        plus, minus = nuisance_starts(obj, th_ref)
+        starts = {"image_gaussian": (f0["image_gaussian"], th_ref), "nuisance_plus": (f_ref, plus), "nuisance_minus": (f_ref, minus)}
+        for name, (fs, ts) in starts.items():
+            saved = out / f"values_restart_{name}.npz"
+            if saved.exists():
+                z = dict(np.load(saved))
+                th = np.concatenate([np.asarray(z[k], float).ravel() for k, _, _ in obj.layout]) if obj.layout else np.zeros(0)
+                f, spent = np.asarray(z["pixels"], float).ravel() ** 2, 0.0
+                obj.set_theta(th)
+                rows[name] = _restart_row(ev, f_ref, th_ref, f, th, ev.evaluate(f, th), spent) | dict(source="driver")
+            else:
+                f, th, r, spent = _converge(obj, main_method, fs, ts, ev, budget_s=budget, check_s=min(120.0, budget))
+                rows[name] = _restart_row(ev, f_ref, th_ref, f, th, r, spent) | dict(source=f"certify:{main_method}")
+        return rows
+
+    def guarded(label, fn):
+        try:
+            return fn()
+        except Exception as e:  # a check that cannot run is a check that failed, recorded, never a silent pass
+            return dict(passed=False, error=f"{type(e).__name__}: {e}", check=label)
+
+    rows = guarded("C3", restarts)
+    report["C3"] = dict(passed=("error" not in rows) and all(r["passes"] and r["certified"] for r in rows.values()), restarts=rows) if "error" not in rows else rows
+
+    def perturbed():
+        fp = perturb_lognormal(f_ref, 0.5, np.random.default_rng(0), flux=float(f_ref.sum()))
+        f, th, r, spent = _converge(obj, runner_up, fp, th_ref, ev, budget_s=budget, check_s=min(120.0, budget))
+        row = _restart_row(ev, f_ref, th_ref, f, th, r, spent)
+        return dict(passed=bool(row["passes"] and row["certified"]), optimiser=runner_up, **row)
+
+    report["C4"] = guarded("C4", perturbed)
+
+    def direct():
+        obj.set_theta(th_ref)
+        toeplitz = 2.0 * obj.data_vg(f_ref)[0]
+        sc = va.score(data, prob.scene, {k: np.asarray(v) for k, v in values.items()}, prob.nuis, eps=1e-12)
+        rel = abs(float(sc["chi2_raw"]) - toeplitz) / abs(toeplitz)
+        return dict(passed=bool(rel < C5_RTOL), rel_diff=float(rel), chi2_direct=float(sc["chi2_raw"]), chi2_toeplitz=float(toeplitz), eps=1e-12)
+
+    report["C5"] = guarded("C5", direct)
+
+    def bounds():
+        ab = va.at_bound_report(values, prob.priors, edge=C6_EDGE)
+        ob = va.offset_bound_report(values.get("cal.offset"), prob.offset_bound_mas, getattr(prob, "offset_bound_requested", None), edge=C6_EDGE,
+                                    bound_obs=getattr(prob, "offset_bound_obs", None), ref_obs=prob.nuis.ref_obs)
+        return dict(passed=not ab["at_bound"] and ob.get("warning") is None, at_bound=ab, offset_bound=ob)
+
+    report["C6"] = guarded("C6", bounds)
+    report["certified"] = bool(all(report[c]["passed"] for c in ("C1", "C2", "C3", "C4", "C5", "C6")))
+    return report

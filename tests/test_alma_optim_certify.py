@@ -297,3 +297,31 @@ def test_a_run_certifies_and_the_rebuilt_fit_result_gives_the_same_kkt_w(virgil_
     assert rep["want_grow"] == pytest.approx(ours["want_grow"], abs=1e-3)
     assert np.isfinite(rep["band_limit"])  # reported by virgil, not gating here
     assert ac.virgil_kkt(obj, f)["kkt_w"] < 1e-4
+
+
+@pytest.mark.validates("virgil.fitting.kkt_report", roots=["self-consistency"], kind="guard")
+def test_the_production_hook_runs_c1_to_c6_with_the_signature_dsharp_fit_calls(virgil_chain, tmp_path, monkeypatch):
+    """``certify(prob=, values=, data=, result=, out=)`` as ``dsharp_fit.py --certify alma_certify:certify`` calls it, on a namespace shaped like ``build_production_problem``'s."""
+    import inspect
+    import types
+
+    prob, obj = virgil_chain
+    assert list(inspect.signature(ac.certify).parameters) == ["prob", "values", "data", "result", "out"]
+    ns = types.SimpleNamespace(npix=prob.npix, pixel_mas=prob.pixel_mas, scene=prob.scene, nuis=prob.nuisance, priors=prob.priors, init={"pixels": obj.flat().reshape(prob.npix, prob.npix) ** 0.5},
+                               terms=[prob.term], regs=[], model=prob.model, lam=obj.weight, flux=prob.flux, offset_bound_mas=20.0, offset_bound_obs=None, offset_bound_requested=20.0)
+    res = ao.run("newton_cg", obj, obj.flat(), budget_s=30.0, cg_tol=1e-4)
+    f, _ = ao.polish(obj, res.f, rounds=60, cg_tol=1e-8)
+    values = {"pixels": np.sqrt(f).reshape(prob.npix, prob.npix)}
+    monkeypatch.setenv(ac.ENV_RUNNER_UP, "newton_cg")
+    monkeypatch.setenv(ac.ENV_BUDGET, "15")
+    rep = ac.certify(prob=ns, values=values, data=prob.data, result={"args": {"optimiser": "lbfgsb"}}, out=tmp_path)
+    assert set(("C1", "C2", "C3", "C4", "C5", "C6", "certified", "runner_up")) <= set(rep)
+    assert rep["C1"]["passed"] and rep["C2"]["passed"], (rep["C1"], rep["C2"])
+    assert set(rep["C3"]["restarts"]) == {"image_gaussian", "nuisance_plus", "nuisance_minus"}
+    assert rep["C4"]["optimiser"] == "newton_cg" and "image" in rep["C4"]
+    assert "rel_diff" in rep["C5"], rep["C5"]  # the direct NUFFT re-score ran
+    assert "at_bound" in rep["C6"], rep["C6"]
+    assert rep["certified"] == all(rep[c]["passed"] for c in ("C1", "C2", "C3", "C4", "C5", "C6"))
+    import json
+
+    json.dumps(rep, default=float)  # JSON-able as dsharp_fit's result.json needs
