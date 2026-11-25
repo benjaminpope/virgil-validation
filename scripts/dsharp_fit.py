@@ -206,11 +206,16 @@ def spectral_index(zs):
     one observation. Returns ``dict(alpha, sigma, n_windows, windows, used, alpha_fixed)``; ``alpha_fixed`` is alpha when it differs from 0 by more than
     ``ALPHA_SIGMA`` sigma, else 0.0 (decision 8)."""
     rows = []
-    # one q range in wavelengths for every window (the largest of the windows' shortest-1% cuts): Re V falls with q on a resolved disc, and a cut that follows
+    # one q range in wavelengths for every window of an observation (the largest of its windows' shortest-1% cuts): Re V falls with q on a resolved disc, and a cut that follows
     # each window's own baselines would turn any trend of q with frequency into a spurious slope (review of PR 293)
-    qmax = max(float(np.quantile(np.hypot(np.asarray(z["u"], float), np.asarray(z["v"], float)), 0.01)) for z in zs)
+    # (per observation: each has its own free level, so only its own windows must sample the same angular scale; a long-baseline observation's cut must not
+    # force a compact one to average over its resolved baselines)
+    qmax = {}
     for z in zs:
-        f, e = short_baseline_flux(z, qmax=qmax)
+        o = int(z["obsid"])
+        qmax[o] = max(qmax.get(o, 0.0), float(np.quantile(np.hypot(np.asarray(z["u"], float), np.asarray(z["v"], float)), 0.01)))
+    for z in zs:
+        f, e = short_baseline_flux(z, qmax=qmax[int(z["obsid"])])
         nu = float(np.average(np.asarray(z["freq"], float), weights=np.asarray(z["weight"], float)))
         rows.append((int(z["obsid"]), int(z["ddid"]), nu, f, e))
     nu0 = float(np.mean([r[2] for r in rows]))
@@ -695,7 +700,7 @@ def run_mode(args, zs, probe, out):
         test = va.score(data, prob.scene, vals, prob.nuis, mask=folds == TEST_FOLD)
         res.update(folds=dict(k=K_FOLDS, test=TEST_FOLD, tuning=list(TUNING_FOLDS), sha256=va.folds_sha256({0: folds})), heldout=dict(rungs=list(rungs), scores=scores.tolist(), n=n_ho,
                    by_fold=by_fold), selection=sel, test_fold=dict(weight=sel["weight"], chi2=test["chi2_raw"], n=test["n"], stop=why, capped=why not in CONVERGED_WHY))
-        if args.mode == "s5":
+        if args.mode in ("s3", "s5"):  # C3's restarts belong to the certification pilot too (plan section 6)
             res["restarts"] = run_restarts(prob_kw, data, sel, full[sel["pick"]]["values"], optimiser, args, on_round)
     pick = full[sel["pick"]] if sel else full[-1]
     vals = pick["values"]
@@ -707,7 +712,10 @@ def run_mode(args, zs, probe, out):
     np.savez(out / "values.npz", **vals)
     np.save(out / "image_base.npy", base.astype(np.float32))
     np.save(out / "image_tapered.npy", sky.astype(np.float32))
-    cx.write_fits(out / "image.fits", sky, px, ra, dec, OBJECT=t["name"], ORIGIN=f"virgil production {args.mode} {args.arm}, {args.target}", TAPERMAS=float(args.taper_mas))
+    failed = bool(pick["capped"])  # plan section 5.3: a run that hits a cap is failed and its image is not shown as a result
+    if not failed:
+        cx.write_fits(out / "image.fits", sky, px, ra, dec, OBJECT=t["name"], ORIGIN=f"virgil production {args.mode} {args.arm}, {args.target}", TAPERMAS=float(args.taper_mas))
+    res["failed"] = failed
     res.update(selected_weight=pick["weight"], flux_jy=float(np.sum(np.asarray(vals["pixels"]) ** 2)), gain=vals.get("cal.gain"), offset_mas=vals.get("cal.offset"),
                at_bound=va.at_bound_report(vals, prob.priors),
                offset_bound=va.offset_bound_report(vals.get("cal.offset"), prob.offset_bound_mas, prob.offset_bound_requested, bound_obs=prob.offset_bound_obs, ref_obs=prob.nuis.ref_obs),
@@ -715,6 +723,8 @@ def run_mode(args, zs, probe, out):
     res["certified"] = None if certify is None else certify(prob=prob, values=vals, data=data, result=res, out=out)
     (out / "result.json").write_text(json.dumps(jsonable(res), indent=1))
     say(f"selected w {pick['weight']:g}; certified {res['certified'] if certify else 'null (no --certify: PR-B pending)'}; capped {res['any_capped']}; wrote {out}")
+    if failed:
+        raise SystemExit(f"{args.target}: the selected rung hit a cap ({pick['stop']}): FAILED, no image.fits written (plan section 5.3); values and result.json are in {out}")
     return res
 
 
