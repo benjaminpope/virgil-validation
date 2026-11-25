@@ -690,7 +690,7 @@ def test_replica_minibatch_workflow_runs_and_is_opt_in(syn, tmp_path):
     res = json.loads((out / "result.json").read_text())
     assert np.all(np.isfinite(np.load(out / "image.npy")))
     st = res["stages"][0]
-    assert st["steps"] == 6 and st["chi2"]["engine"] == "direct"
+    assert st["steps"] == 6 and st["chi2"]["engine"] == "auto"  # use.term leaves the engine to virgil (#263); the test was left stale
     assert st["c8_converged"] is None and st["fit_converged"] is None  # C8 is not assessed on batch noise
     with pytest.raises(SystemExit):
         _call("fit", "--config", "R", "--replica-minibatch", "--data", syn, "--out", tmp_path / "bad", "--npix", 24)  # not a mpol-replica workflow
