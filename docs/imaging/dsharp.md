@@ -14,9 +14,30 @@ MPoL is not used here.
 - **Provenance.** Sizes are checked on download and the SHA-256 of each tarball is recorded on first fetch and verified after (`data/dsharp/checksums.json`).
   See `DATA_ATTRIBUTION.md`.
 
-## Method
+## The production driver
 
-`scripts/dsharp_fit.py` builds the same problem for every target: a pixel image with a 30 mas taper and the MPoL entropy, with the reference observation
+`scripts/dsharp_fit.py` is the corrected driver of the convergence plan (`reports/dsharp-convergence-plan.md` of virgil-paper, revision 2). The first run, whose
+method is described under "The first run" below, did not converge: pixels stuck at the floor under its 1″ Gaussian start, one runaway offset (RU Lup at 50 mas),
+`chi2="auto"` switching engines silently, and HL Tau's weights about 2000× off. The production model is:
+
+- `virgil.LinearImage` in √I pixels, the pixels owning the flux; classic MEM (`MaxEntropy` on the unblurred pixels, flat default); a **flat start**; the kernel only in the ICF arm.
+- Fitted per-observation gains and offsets (spread, ±20 mas box); error scales fixed at 1 on weights rescaled by the model-free pair scatter ŝ² of each window
+  (per window × baseline bin where ŝ² varies by more than 20% across bins); spectral index fixed at the model-free value when it differs from 0 by more than 2σ, else 0.
+- `chi2="toeplitz"` named explicitly and the engine read back from the term, never `"auto"`.
+
+`dsharp_fit.py probe` (stage S1) fits no image. It writes `probe.json`: ŝ² per window and bin, the model-free spectral index, each observation's model-free shift
+(the phase slope of the cross-power with the reference observation) against a short joint image-and-offsets fit (not a held flat image, which has no offset gradient), the pre-alignment verdict (agreement within 5 mas: pre-align by the
+model-free shift and fit the residual in ±20 mas; otherwise no pre-alignment; a disc whose offsets still leave the box is dropped and reported, never run direct), the
+loss and gradient of the Toeplitz and direct engines on the production model at a perturbed point, and the timings. Gate G1 is printed from them. The run modes `s3`
+(certification pilot), `s4` (diagnosis: `--start flat|gaussian`, `--arm mem|icf`) and `s5` (production, with the restarts) read `probe.json`,
+fit the λ ladder (w = 10⁶ to 3×10³, strongest first, each rung warm-started), the tuning folds (fold 0 is the test fold and tunes nothing) and pick λ by the one-standard-error
+rule. A rung that stops on a cap is a failed rung. Every round checkpoints and `result.json` records both commits. The optimiser sits behind `OPTIMISERS` (default virgil's L-BFGS
+until stage S2 picks), and certification is PR-B's `alma_certify` (`--certify module:function`); without it `certified` is `null`. The comparison page (`dsharp_report.py`)
+still reads the first run's `result.json`; it is rebuilt for these results by the comparison PR.
+
+## The first run
+
+The first run's `dsharp_fit.py` (virgil `09b2685`, vv `0542235`; git history of this file) built the same problem for every target: a pixel image with a 30 mas taper and the MPoL entropy, with the reference observation
 (largest summed weight) fixing the gain and offset gauge, and the start flux estimated from the shortest baselines. The start is a 1″ Gaussian raised to MPoL's entropy
 floor (its outer pixels would otherwise be too dark for the optimiser to revive), and MPoL's F_tot is that start flux rather than IM Lup's 0.253 Jy, so λ_M means the same
 on every disc and band (with IM Lup's value the entropy weight would grow with the flux, about 8× on HL Tau Band 7). One all-data stage is run to the C8 convergence
