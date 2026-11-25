@@ -187,7 +187,7 @@ def test_the_flat_start_is_strictly_positive_and_carries_the_flux_and_the_gaussi
     g = fit.gaussian_floor_pixels(64, 50.0, 0.001)  # a 3.2 arcsec field: the far Gaussian is below the 1e-4 Jy/arcsec^2 floor
     img = g**2 / (50.0 / 1000.0) ** 2
     assert np.sum(g**2) == pytest.approx(0.001) and 0.5e-4 < img.min() <= 1e-4  # at the entropy floor in the far field (renormalised to the flux)
-    assert img.max() == pytest.approx(img[32, 32])
+    assert img.max() == pytest.approx(img[31, 31])
 
 
 @pytest.mark.validates("crosscheck.dsharp", roots=["self-consistency"], kind="guard")
@@ -243,3 +243,19 @@ def test_a_resolved_achromatic_source_gives_no_spectral_slope():
         zs.append(z)
     a = fit.spectral_index(zs)
     assert abs(a["alpha"]) < 0.05, a
+
+
+@pytest.mark.validates("crosscheck.dsharp", roots=["self-consistency"], kind="guard")
+def test_the_engines_agree_on_a_tiny_problem_at_the_pinned_virgil():
+    pytest.importorskip("virgil.radio_toeplitz")  # the pin of the convergence plan; older virgils have no explicit Toeplitz term
+    import jax
+
+    jax.config.update("jax_enable_x64", True)
+    import virgil_bridge.alma as va
+
+    rng = np.random.default_rng(0)
+    z = _window(rng, 0, 0, s=1.0, n_ant=8, n_t=4)
+    z["u"], z["v"] = z["u"] / 20, z["v"] / 20
+    z["vis"] = np.exp(-(np.hypot(z["u"], z["v"]) / 2e4) ** 2) * np.ones(len(z["u"]), complex)
+    e = fit.engine_agreement(va.load_npz([z]), dict(npix=16, pixel_mas=40.0, weight=1.0, ref_obs=0, box_mas=20.0, flux=1.0), log=lambda *a: None)
+    assert e["engine_toeplitz"] == "toeplitz" and e["engine_direct"] == "direct" and e["pass_loss"] and e["pass_grad"]

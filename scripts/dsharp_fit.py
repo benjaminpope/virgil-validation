@@ -222,6 +222,9 @@ def spectral_index(zs):
     cov = np.linalg.pinv(A)
     beta = cov @ (X.T @ (W * y))
     alpha, sigma = float(beta[0]), float(np.sqrt(cov[0, 0]))
+    dof = len(y) - X.shape[1]
+    if dof > 0:  # windows scatter more than their errors say (self-calibration, resolution): inflate sigma by max(sqrt(chi2_red), 1)
+        sigma *= max(float(np.sqrt(np.sum(W * (y - X @ beta) ** 2) / dof)), 1.0)
     use = abs(alpha) > ALPHA_SIGMA * sigma
     return dict(alpha=alpha, sigma=sigma, n_windows=len(rows), windows=windows, nu0_hz=nu0, used=bool(use), alpha_fixed=alpha if use else 0.0)
 
@@ -239,6 +242,8 @@ def model_free_shift(zs, obs, ref, qcut=SHIFT_QCUT, cell=SHIFT_CELL):
         w = np.concatenate([np.asarray(z["weight"], float) for z in zs if int(z["obsid"]) == sel])
         keep = np.hypot(u, v) < qcut
         u, v, vis, w = u[keep], v[keep], vis[keep], w[keep]
+        flip = (v < 0) | ((v == 0) & (u < 0))  # Hermitian partners share a cell: V(-u, -v) = conj V(u, v)
+        u, v, vis = np.where(flip, -u, u), np.where(flip, -v, v), np.where(flip, np.conj(vis), vis)
         ci, cj = np.round(u / cell).astype(np.int64), np.round(v / cell).astype(np.int64)
         key = ci * 100003 + cj
         uk, inv = np.unique(key, return_inverse=True)
@@ -258,7 +263,7 @@ def model_free_shift(zs, obs, ref, qcut=SHIFT_QCUT, cell=SHIFT_CELL):
     u = np.array([0.5 * (a[k][2] + b[k][2]) for k in common])
     v = np.array([0.5 * (a[k][3] + b[k][3]) for k in common])
     phase = np.angle(va * np.conj(vb))
-    var = 1.0 / (2 * snr2a) + 1.0 / (2 * snr2b)
+    var = 1.0 / snr2a + 1.0 / snr2b  # a weight is 1/sigma^2 of each of Re and Im, so the phase variance of a cell is 1/(|V|^2 sum w)
     X = -2.0 * np.pi * np.stack([u, v], axis=1)
     W = 1.0 / var
     cov = np.linalg.pinv(X.T @ (X * W[:, None]))
@@ -371,7 +376,7 @@ def flat_pixels(npix, flux):
 def gaussian_floor_pixels(npix, pixel_mas, flux, fwhm_mas=1000.0, floor=1e-4):
     """The old start, for the S4 comparison: a Gaussian of FWHM ``fwhm_mas`` and flux ``flux`` raised to ``floor`` Jy/arcsec^2, as sqrt-pixels of flux
     ``flux`` in total (renormalised)."""
-    x = (np.arange(npix) - npix // 2) * pixel_mas
+    x = (np.arange(npix) - (npix // 2 - 1)) * pixel_mas  # the phase-centre cell of the repository's layout, crosscheck.alma_maxent.phase_centre_cell
     r2 = x[None, :] ** 2 + x[:, None] ** 2
     g = np.exp(-4.0 * np.log(2.0) * r2 / fwhm_mas**2)
     area = (pixel_mas / 1000.0) ** 2
@@ -451,6 +456,7 @@ def _perturbed(prob, seed=0):
 def engine_agreement(data, kw, log=say):
     """G1 item 1 and 5: the production model's loss and gradient on the Toeplitz and the direct engine at a perturbed point (the loss is half the sum of the
     squared residuals of the term), the cost of one value-and-gradient and one Hessian-vector product on the Toeplitz engine, and the precompute time."""
+    import equinox as eqx
     import jax
 
     import virgil_bridge.alma as va
@@ -461,27 +467,27 @@ def engine_agreement(data, kw, log=say):
     pd = build_production_problem(data, chi2="direct", **kw)
     v = _perturbed(pt)
 
-    def loss_of(prob):
-        term = prob.terms[0]
-        return lambda x: 0.5 * jax.numpy.sum(term(x) ** 2)
+    def loss(term, x):  # the data term's loss, half chi^2 plus log norm, constants included: both engines have it (the Toeplitz term has no residual vector)
+        chi2, log_norm = term.full_chi2_and_log_norm(x)
+        return 0.5 * chi2 + log_norm
 
     out = {}
     with va.ft_eps(va.EPS_SCORE):
-        ld, gd = jax.value_and_grad(loss_of(pd))(v)
-    lt_fn = loss_of(pt)
-    vg = jax.jit(jax.value_and_grad(lt_fn))
-    lt, gt = vg(v)
+        ld, gd = jax.value_and_grad(loss, argnums=1)(pd.terms[0], v)
+    tt = pt.terms[0]
+    vg = eqx.filter_jit(jax.value_and_grad(loss, argnums=1))  # the term goes in as an argument: its multi-GB arrays are not closed over and constant-folded
+    lt, gt = vg(tt, v)
     jax.block_until_ready(gt)
     t0 = time.time()
     for _ in range(3):
-        jax.block_until_ready(vg(v)[1])
+        jax.block_until_ready(vg(tt, v)[1])
     t_vg = (time.time() - t0) / 3
-    grad_fn = jax.jit(jax.grad(lt_fn))
-    hvp = jax.jit(lambda x, d: jax.jvp(grad_fn, (x,), (d,))[1])
-    jax.block_until_ready(hvp(v, gt))
+    grad_fn = jax.grad(loss, argnums=1)
+    hvp = eqx.filter_jit(lambda term, x, d: jax.jvp(lambda y: grad_fn(term, y), (x,), (d,))[1])
+    jax.block_until_ready(hvp(tt, v, gt))
     t0 = time.time()
     for _ in range(3):
-        jax.block_until_ready(hvp(v, gt))
+        jax.block_until_ready(hvp(tt, v, gt))
     t_hvp = (time.time() - t0) / 3
     rel_loss = abs(float(lt) - float(ld)) / abs(float(ld))
     rel_grad = {k: float(np.max(np.abs(np.asarray(gt[k]) - np.asarray(gd[k]))) / max(float(np.max(np.abs(np.asarray(gd[k])))), 1e-300)) for k in gd}
@@ -523,9 +529,9 @@ def run_probe(args, zs, out):
     shat = va.read_shat(args.shat, int(max(int(z["ddid"]) for z in zs)) + 1) if args.shat else None
     wplan = weight_plan(zs, shat)
     say("weights (model-free s^2): " + ", ".join(f"ddid {d}: {p['s2']:.4g}{' per-bin' if p['per_bin'] else ''}" for d, p in sorted(wplan.items())))
-    alpha = spectral_index(zs)
-    say(f"spectral index: {alpha['alpha']} +- {alpha['sigma']} -> fixed at {alpha['alpha_fixed']}")
     zw = apply_weights(zs, wplan)
+    alpha = spectral_index(zw)  # on the rescaled weights, so sigma is not 50x too small where the MS errors are
+    say(f"spectral index: {alpha['alpha']} +- {alpha['sigma']} -> fixed at {alpha['alpha_fixed']}")
     obs = sorted({int(z["obsid"]) for z in zs})
     wsum = {o: float(sum(np.asarray(z["weight"], float).sum() for z in zw if int(z["obsid"]) == o)) for o in obs}
     ref_pos = int(np.argmax([wsum[o] for o in obs])) if args.ref_obs == "auto" else int(args.ref_obs)
@@ -575,7 +581,10 @@ def prepare(zs, shifts):
 # ---------------------------------------------------------------------------------------------------- run modes
 def fit_rung(prob_kw, data, init, mask, optimiser, args, log, on_round):
     """One fit of the production problem at ``prob_kw['weight']`` on the points of ``mask`` from ``init``. Returns ``(prob, values, info, why, wall)``."""
-    prob = build_production_problem(data, mask=mask, start=None if init is None else init["pixels"], **prob_kw)
+    kw = dict(prob_kw)
+    if mask is not None:  # the regulariser is not scaled by the mask: on a fraction f of the points a weight w would act as w / f, so the rung's weight is w f
+        kw["weight"] = float(prob_kw["weight"]) * float(np.asarray(mask, bool).sum()) / len(data.u)
+    prob = build_production_problem(data, mask=mask, start=None if init is None else init["pixels"], **kw)
     start = dict(prob.init)
     if init is not None:
         start.update({k: v for k, v in init.items() if k in start})
@@ -625,6 +634,8 @@ def run_mode(args, zs, probe, out):
     jax.config.update("jax_enable_x64", True)
     import virgil_bridge.alma as va
 
+    if probe.get("gate", {}).get("G1") is not True:
+        raise SystemExit(f"{args.target}: the probe's gate G1 did not pass ({probe.get('gate')}): stop and return to Ben (plan section 3)")
     if probe["offset_plan"]["drop"]:
         raise SystemExit(f"{args.target}: the probe's offsets leave the Toeplitz box for observations {probe['offset_plan']['drop']}: the disc is dropped, not run direct without Ben's word")
     t = ds.target(args.target)
