@@ -119,11 +119,12 @@ def pair_scatter(z):
     """The time-adjacent pair differences of one ddid file: ``(q, z2)`` per pair, with ``q`` the baseline length (wavelengths) and
     ``z2 = (dRe^2 + dIm^2) / (2 (1/w_i + 1/w_j))``, whose mean is the model-free s^2 (virgil ``sigma_scale``). Samples of one baseline, channel and scan are
     paired in time order without overlap; the result needs ``time``, ``ant1`` and ``ant2`` (``chan`` and ``scan`` are used when present), else None."""
-    if any(k not in z for k in ("time", "ant1", "ant2")):
-        return None
+    if any(k not in z for k in ("time", "ant1", "ant2", "scan")) or ("chan" not in z and "freq" not in z):
+        return None  # without the scan and a channel key, pairs could straddle scans or channels
     n = len(z["u"])
     zeros = np.zeros(n, int)
-    keys = [np.asarray(z.get(k, zeros)) for k in ("ant1", "ant2", "chan", "scan")]
+    chan = np.asarray(z["chan"]) if "chan" in z else np.round(np.asarray(z["freq"], float) / 1e3).astype(np.int64)  # the channel from its frequency (1 kHz)
+    keys = [np.asarray(z["ant1"]), np.asarray(z["ant2"]), chan, np.asarray(z["scan"])]
     order = np.lexsort((np.asarray(z["time"]), keys[3], keys[2], keys[1], keys[0]))
     key = np.stack(keys)[:, order]
     first = np.concatenate([[True], np.any(key[:, 1:] != key[:, :-1], axis=0)])
@@ -132,11 +133,17 @@ def pair_scatter(z):
     i = np.flatnonzero((pos % 2 == 0) & (np.arange(n) + 1 < n))
     i = i[gid[np.minimum(i + 1, n - 1)] == gid[i]]
     a, b = order[i], order[i + 1]
+    if "t_int_s" in z:  # the successive-difference rule of crosscheck.alma: only integrations one dump apart pair (a strided subsample does not)
+        dt = np.asarray(z["time"], float)[b] - np.asarray(z["time"], float)[a]
+        keep = (dt > 0) & (dt <= 1.5 * float(np.asarray(z["t_int_s"]).ravel()[0]))
+        a, b = a[keep], b[keep]
+    if len(a) == 0:
+        return None
     vis, w = _vis(z), np.asarray(z["weight"], float)
     d = vis[a] - vis[b]
     z2 = (d.real**2 + d.imag**2) / (2.0 * (1.0 / w[a] + 1.0 / w[b]))
     q = np.hypot(np.asarray(z["u"], float)[a], np.asarray(z["v"], float)[a])
-    return q, z2, np.asarray(z.get("scan", zeros))[a]
+    return q, z2, np.asarray(z["scan"])[a]
 
 
 def weight_plan(zs, shat=None, n_bins=N_BINS, variation=BIN_VARIATION):
@@ -414,7 +421,7 @@ def build_production_problem(data, *, npix, pixel_mas, weight, ref_obs, alpha=0.
     if chi2 == "toeplitz":
         term, info = va.toeplitz_term(data, scene, nuis, npix=npix, pixel_mas=pixel_mas, mask=mask, max_offset_mas=float(box_mas))
     else:
-        term, info = data.term(scene, nuis, mask=None if mask is None else np.asarray(mask, bool), chi2="direct"), dict(engine="direct")
+        term, info = data.term(scene, nuis, mask=None if mask is None else np.asarray(mask, bool), chi2="direct", chunk_size=va.CHUNK), dict(engine="direct")
     engine = engine_of(term)
     say(f"data term: {type(term).__module__}.{type(term).__qualname__} -> engine {engine} (asked {chi2}; the Toeplitz term comes from ComplexVisData.toeplitz, which raises rather than falling back)")
     if engine != chi2:
@@ -675,7 +682,12 @@ def run_mode(args, zs, probe, out):
         folds, _ = va.make_folds(data, k=K_FOLDS)
         scores, n_ho, by_fold = tuning_scores(prob_kw, data, folds, optimiser, args, say, on_round, rungs=rungs)
         fold_matrix = np.array([[by_fold[j][i]["heldout_chi2"] for j in TUNING_FOLDS] for i in range(len(rungs))])
-        sel = one_se_pick(rungs, scores, n_ho, fold_matrix)
+        usable = [i for i in range(len(rungs)) if np.all(np.isfinite(fold_matrix[i])) and not any(by_fold[j][i]["capped"] for j in TUNING_FOLDS)]
+        if not usable:
+            raise SystemExit(f"{args.target}: no rung converged in every tuning fold (stops: {[[by_fold[j][i]['stop'] for j in TUNING_FOLDS] for i in range(len(rungs))]}): no one-SE pick")
+        sub_pick = one_se_pick([rungs[i] for i in usable], fold_matrix[usable].sum(axis=1), n_ho, fold_matrix[usable])
+        sel = dict(sub_pick, pick=usable[sub_pick["pick"]], best=usable[sub_pick["best"]], excluded=[rungs[i] for i in range(len(rungs)) if i not in usable])
+        sel["flat"] = bool(sel["pick"] == 0)
         say(f"held-out chi2 {np.round(scores, 1).tolist()}; one-SE pick w={sel['weight']:g}{' (flat: the data did not choose)' if sel['flat'] else ''}")
         train = folds != TEST_FOLD
         prob, vals, info, traj, why, wall = fit_rung(dict(prob_kw, weight=sel["weight"]), data, start, train, optimiser, args, say,
@@ -715,6 +727,8 @@ def run_restarts(prob_kw, data, sel, ref_values, optimiser, args, on_round):
     px, npix = prob_kw["pixel_mas"], prob_kw["npix"]
     starts = {"image_gaussian": dict(ref_values, pixels=gaussian_floor_pixels(npix, px, prob_kw["flux"]))}
     for name, sgn in (("nuisance_plus", 1.0), ("nuisance_minus", -1.0)):
+        if "cal.offset" not in ref_values and "cal.gain" not in ref_values:
+            break  # a single-observation target has no fitted nuisances to restart
         s = dict(ref_values)
         if "cal.offset" in s:
             s["cal.offset"] = np.full_like(np.asarray(s["cal.offset"], float), sgn * 10.0)

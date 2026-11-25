@@ -280,3 +280,20 @@ def test_offsets_only_fit_recovers_a_known_shift_to_under_a_milliarcsecond(shift
         zs.append(z)
     fitted, _ = fit.offsets_only_fit(va.load_npz(zs), dict(npix=64, pixel_mas=20.0, weight=3e3, ref_obs=0, box_mas=20.0, flux=1.0), log=lambda *a: None)
     assert np.allclose(fitted[1], shift, atol=1.0), fitted
+
+
+@pytest.mark.validates("crosscheck.dsharp", roots=["self-consistency"], kind="guard")
+def test_the_shift_error_is_calibrated_and_conjugate_baselines_share_cells():
+    # independent noise, weights 1/sigma^2 per component, and the second observation samples the conjugate half-plane (hour angles on the other side)
+    rng = np.random.default_rng(11)
+    sig, shift = 0.05, (6.0, -3.0)
+    u0, v0 = rng.uniform(-3e5, 3e5, 4000), rng.uniform(-3e5, 3e5, 4000)
+
+    def win(obsid, u, v, sh):
+        vis = _disc(u, v) * np.exp(-2j * np.pi * (sh[0] * MAS * u + sh[1] * MAS * v))
+        vis = vis + sig * (rng.normal(size=len(u)) + 1j * rng.normal(size=len(u)))
+        return dict(u=u, v=v, vis=vis, weight=np.full(len(u), 1.0 / sig**2), freq=np.full(len(u), 2.3e11), ddid=obsid, obsid=obsid)
+
+    est = fit.model_free_shift([win(0, u0, v0, (0.0, 0.0)), win(1, -u0, -v0, shift)], 1, 0)
+    assert est["n_cells"] > 50 and est["phase_chi2"] == pytest.approx(1.0, rel=0.5)
+    assert est["shift_mas"] == pytest.approx(list(shift), abs=4 * max(est["error_mas"]))
