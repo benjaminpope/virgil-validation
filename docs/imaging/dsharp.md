@@ -26,7 +26,7 @@ method is described under "The first run" below, did not converge: pixels stuck 
 - `chi2="toeplitz"` named explicitly and the engine read back from the term, never `"auto"`.
 
 `dsharp_fit.py probe` (stage S1) fits no image. It writes `probe.json`: ŝ² per window and bin, the model-free spectral index, each observation's model-free shift
-(the phase slope of the cross-power with the reference observation) against an offsets-only fit, the pre-alignment verdict (agreement within 5 mas: pre-align by the
+(the phase slope of the cross-power with the reference observation) against a short joint image-and-offsets fit (not a held flat image, which has no offset gradient), the pre-alignment verdict (agreement within 5 mas: pre-align by the
 model-free shift and fit the residual in ±20 mas; otherwise no pre-alignment; a disc whose offsets still leave the box is dropped and reported, never run direct), the
 loss and gradient of the Toeplitz and direct engines on the production model at a perturbed point, and the timings. Gate G1 is printed from them. The run modes `s3`
 (certification pilot), `s4` (diagnosis: `--start flat|gaussian`, `--arm mem|icf`) and `s5` (production, with the image and nuisance restarts) read `probe.json`,

@@ -162,11 +162,14 @@ def test_a_confirmed_large_shift_is_prealigned_so_its_residual_fits_the_box_but_
 @pytest.mark.validates("crosscheck.dsharp", roots=["self-consistency"], kind="guard")
 def test_the_one_standard_error_rule_takes_the_strongest_weight_within_the_tolerance():
     rungs = [1e6, 3e5, 1e5, 3e4, 1e4, 3e3]
-    n = 5000  # tolerance sqrt(2 n) = 100
+    n = 2500  # null-spread fallback 2 sqrt(n) = 100 (chi^2 sums two components a point)
     s = fit.one_se_pick(rungs, [900.0, 520.0, 410.0, 400.0, 405.0, 520.0], n)
     assert s["weight"] == 1e5 and s["best"] == 3 and not s["flat"] and s["tolerance"] == pytest.approx(100.0)
     f = fit.one_se_pick(rungs, [1000.0, 1010.0, 1005.0, 1000.0, 1003.0, 1002.0], n)
     assert f["weight"] == 1e6 and f["flat"]  # the data did not choose: the smoothest rung, and the flag says so
+    f3 = np.array([[300, 300, 300], [170, 175, 175], [137, 137, 136], [133, 134, 133], [135, 135, 135], [173, 174, 173]], float)  # rung x fold
+    c = fit.one_se_pick(rungs, f3.sum(axis=1), n, f3)  # standard error of the summed difference from the spread over folds
+    assert c["basis"] == "folds" and c["best"] == 3 and c["weight"] == 3e4
     e = fit.one_se_pick(rungs, [600.0, 520.0, 410.0, 400.0, 405.0, 300.0], n)
     assert e["weight"] == 3e4 and e["best"] == 5  # the minimum is the weakest rung; the rule still prefers the smoother of the rungs within tolerance
 
@@ -224,3 +227,19 @@ def test_the_run_modes_exist_and_a_run_mode_needs_the_probe(mode, tmp_path):
                        capture_output=True, text=True, timeout=60)
     if mode != "probe":
         assert r.returncode != 0 and "needs --probe" in (r.stderr + r.stdout)
+    else:
+        assert r.returncode != 0  # the probe needs real ddid arrays; this 2-point file is refused, not fitted
+
+
+@pytest.mark.validates("crosscheck.dsharp", roots=["self-consistency"], kind="guard")
+def test_a_resolved_achromatic_source_gives_no_spectral_slope():
+    # baselines are fixed in metres, so q in wavelengths grows with frequency; V(q) falls with q. A per-window shortest-1% cut would read that as a slope.
+    rng = np.random.default_rng(5)
+    zs = []
+    for d, nu in enumerate((2.0e11, 2.2e11, 2.4e11, 2.6e11)):
+        z = _window(rng, d, 0, s=1.0, freq=nu, w0=1e8, n_ant=40, n_t=2)
+        z["u"], z["v"] = z["u"] * nu / 2.3e11, z["v"] * nu / 2.3e11
+        z["vis"] = np.exp(-(np.hypot(z["u"], z["v"]) / 1.2e5) ** 2) * np.ones(len(z["u"]), complex)
+        zs.append(z)
+    a = fit.spectral_index(zs)
+    assert abs(a["alpha"]) < 0.05, a

@@ -182,10 +182,13 @@ def apply_weights(zs, plan):
 
 
 # ---------------------------------------------------------------------------------------------------- spectral index (decision 8)
-def short_baseline_flux(z, fraction=0.01):
-    """``(flux, error)`` of one window: the weighted mean of Re V on the shortest ``fraction`` of baselines and its standard error."""
+def short_baseline_flux(z, fraction=0.01, qmax=None):
+    """``(flux, error)`` of one window: the weighted mean of Re V on the baselines shorter than ``qmax`` wavelengths (default: the shortest ``fraction`` of
+    them) and its standard error. ``spectral_index`` passes one ``qmax`` for every window, so each selects the same angular scale of a resolved source."""
     q = np.hypot(np.asarray(z["u"], float), np.asarray(z["v"], float))
-    k = np.argsort(q)[: max(1, int(len(q) * fraction))]
+    k = np.argsort(q)[: max(1, int(len(q) * fraction))] if qmax is None else np.flatnonzero(q <= qmax)
+    if len(k) == 0:
+        k = np.argsort(q)[:1]
     w = np.asarray(z["weight"], float)[k]
     return float(np.sum(w * _vis(z).real[k]) / w.sum()), float(1.0 / np.sqrt(w.sum()))
 
@@ -196,8 +199,11 @@ def spectral_index(zs):
     one observation. Returns ``dict(alpha, sigma, n_windows, windows, used, alpha_fixed)``; ``alpha_fixed`` is alpha when it differs from 0 by more than
     ``ALPHA_SIGMA`` sigma, else 0.0 (decision 8)."""
     rows = []
+    # one q range in wavelengths for every window (the largest of the windows' shortest-1% cuts): Re V falls with q on a resolved disc, and a cut that follows
+    # each window's own baselines would turn any trend of q with frequency into a spurious slope (review of PR 293)
+    qmax = max(float(np.quantile(np.hypot(np.asarray(z["u"], float), np.asarray(z["v"], float)), 0.01)) for z in zs)
     for z in zs:
-        f, e = short_baseline_flux(z)
+        f, e = short_baseline_flux(z, qmax=qmax)
         nu = float(np.average(np.asarray(z["freq"], float), weights=np.asarray(z["weight"], float)))
         rows.append((int(z["obsid"]), int(z["ddid"]), nu, f, e))
     nu0 = float(np.mean([r[2] for r in rows]))
@@ -304,15 +310,28 @@ def offset_plan(model_free, fitted, ref, box=BOX_MAS, agree=AGREE_MAS, edge=BOX_
 
 
 # ---------------------------------------------------------------------------------------------------- the lambda rule (decision 1)
-def one_se_pick(rungs, scores, n_heldout):
-    """The one-standard-error rule: of the rungs ``rungs`` (the weights) with summed held-out chi^2 ``scores``, the largest weight whose score is within
-    ``sqrt(2 n_heldout)`` of the minimum (``n_heldout`` the number of held-out points; chi^2 sums two components a point). It prefers the smoother image
-    among those the data cannot tell apart. ``flat`` is true when that is the strongest rung (the data did not choose)."""
+def one_se_pick(rungs, scores, n_heldout, fold_scores=None):
+    """The one-standard-error rule: of the rungs ``rungs`` (the weights) with summed held-out chi^2 ``scores``, the largest weight whose score is within one
+    standard error of the minimum. It prefers the smoother image among those the data cannot tell apart. ``fold_scores`` (rungs x folds, the per-fold held-out
+    chi^2) gives the standard error of the summed difference to the best rung from the spread of the per-fold differences, ``sqrt(K) std(d)`` (the usual
+    cross-validation rule; rungs are scored on the same points, so this is far tighter than a single chi^2's spread). Without it, or with fewer than two folds,
+    the fallback is the spread of one chi^2 under the null, ``2 sqrt(n_heldout)`` (``n_heldout`` points, two components each: 2n degrees of freedom).
+    ``flat`` is true when the pick is the strongest rung (the data did not choose)."""
     rungs, scores = np.asarray(rungs, float), np.asarray(scores, float)
-    tol = float(np.sqrt(2.0 * n_heldout))
+    best = int(np.argmin(scores))
+    if fold_scores is not None and np.asarray(fold_scores).shape[1] >= 2:
+        f = np.asarray(fold_scores, float)
+        d = f - f[best]
+        tol = np.sqrt(f.shape[1]) * np.std(d, axis=1, ddof=1)
+        basis = "folds"
+    else:
+        tol = np.full(len(rungs), 2.0 * np.sqrt(n_heldout))
+        basis = "null"
     ok = scores <= scores.min() + tol
+    ok[best] = True
     pick = int(np.argmax(np.where(ok, rungs, -np.inf)))
-    return dict(pick=pick, weight=float(rungs[pick]), best=int(np.argmin(scores)), tolerance=tol, flat=bool(pick == int(np.argmax(rungs))))
+    return dict(pick=pick, weight=float(rungs[pick]), best=best, tolerance=float(tol[pick]) if basis == "null" else tol.tolist(), basis=basis,
+                flat=bool(pick == int(np.argmax(rungs))))
 
 
 # ---------------------------------------------------------------------------------------------------- optimiser interface (PR-B plugs in here)
@@ -340,7 +359,8 @@ def resolve_callable(spec, table=None):
 # ---------------------------------------------------------------------------------------------------- the production problem (needs virgil)
 def engine_of(term):
     """The chi^2 engine a ``fit`` term actually uses, read from the term (the old driver recorded the request, not the engine)."""
-    return "toeplitz" if "toeplitz" in type(term).__name__.lower() else "direct"
+    c = type(term)
+    return "toeplitz" if "toeplitz" in f"{c.__module__}.{c.__name__}".lower() else "direct"
 
 
 def flat_pixels(npix, flux):
@@ -391,6 +411,7 @@ def build_production_problem(data, *, npix, pixel_mas, weight, ref_obs, alpha=0.
     else:
         term, info = data.term(scene, nuis, mask=None if mask is None else np.asarray(mask, bool), chi2="direct"), dict(engine="direct")
     engine = engine_of(term)
+    say(f"data term: {type(term).__module__}.{type(term).__qualname__} -> engine {engine} (asked {chi2}; the Toeplitz term comes from ComplexVisData.toeplitz, which raises rather than falling back)")
     if engine != chi2:
         raise RuntimeError(f"asked for the {chi2} engine, the term is {engine}")
     priors, init, bound = va.nuisance_sites(nuis, data, offset_bound_mas=float(box_mas), ref_obs=ref_obs)
@@ -476,12 +497,14 @@ def engine_agreement(data, kw, log=say):
 
 
 def offsets_only_fit(data, kw, log=say):
-    """The offsets-only fit of S1 item 2: the image is held at the flat start (the model-free shifts do not depend on it; only the offsets and gains move),
-    direct engine, a wide box (3 x the plan's), L-BFGS. Returns ``{obs: (dra, ddec)}`` for every observation but the reference, in mas."""
+    """The model-based offset estimate of S1 item 2: a short joint fit of the image and the offsets (direct engine, a wide box 3 x the plan's, the weakest rung,
+    300 L-BFGS steps) from a centred Gaussian start. The image has to move for the offsets to be measurable: held at a flat field its visibility is ~0 beyond
+    the first null (4e4 wavelengths), so the offsets would have no gradient and stay at their start (review of PR 293). The reference observation fixes the
+    frame, so only differences between observations are measured. Returns ``{obs: (dra, ddec)}`` for every observation but the reference, in mas."""
     import virgil_bridge.alma as va
 
     wide = dict(kw, box_mas=3.0 * kw["box_mas"])
-    prob = build_production_problem(data, chi2="direct", hold_pixels=flat_pixels(kw["npix"], kw["flux"]), **wide)
+    prob = build_production_problem(data, chi2="direct", start=gaussian_floor_pixels(kw["npix"], kw["pixel_mas"], kw["flux"]), **wide)
     vals, info, traj, why = va.run_fit_c8(prob, dict(prob.init), max_steps=300, log=log)
     off = np.asarray(vals["cal.offset"], float).reshape(-1, 2)
     obs = [o for o in range(len(data.obs_ids)) if o != kw["ref_obs"]]
@@ -640,10 +663,11 @@ def run_mode(args, zs, probe, out):
     if args.mode in ("s3", "s5"):
         folds, _ = va.make_folds(data, k=K_FOLDS)
         scores, n_ho, by_fold = tuning_scores(prob_kw, data, folds, optimiser, args, say, on_round, rungs=rungs)
-        sel = one_se_pick(rungs, scores, n_ho)
+        fold_matrix = np.array([[by_fold[j][i]["heldout_chi2"] for j in TUNING_FOLDS] for i in range(len(rungs))])
+        sel = one_se_pick(rungs, scores, n_ho, fold_matrix)
         say(f"held-out chi2 {np.round(scores, 1).tolist()}; one-SE pick w={sel['weight']:g}{' (flat: the data did not choose)' if sel['flat'] else ''}")
         train = folds != TEST_FOLD
-        prob, vals, info, traj, why, wall = fit_rung(dict(prob_kw, weight=sel["weight"]), data, full[sel["pick"]]["values"], train, optimiser, args, say,
+        prob, vals, info, traj, why, wall = fit_rung(dict(prob_kw, weight=sel["weight"]), data, start, train, optimiser, args, say,
                                                      lambda *a: on_round("test", sel["weight"], *a))
         test = va.score(data, prob.scene, vals, prob.nuis, mask=folds == TEST_FOLD)
         res.update(folds=dict(k=K_FOLDS, test=TEST_FOLD, tuning=list(TUNING_FOLDS), sha256=va.folds_sha256({0: folds})), heldout=dict(rungs=list(rungs), scores=scores.tolist(), n=n_ho,
