@@ -1,0 +1,375 @@
+"""The external convergence evaluator of the DSHARP convergence plan (``reports/dsharp-convergence-plan.md`` §4.1, §5.3, §5.4): the stop test, scored on snapshots.
+
+A method's own stop never counts. ``Evaluator.evaluate`` scores one iterate ``f`` (pixel flux, Jy) in flux coordinates, where ``H_f = T + (w / F) diag(1 / f)`` is
+positive definite everywhere (``alma_optim`` documents the objective). The tests, thresholds fixed before any run, ``kappa_0 = 1e-4``:
+
+1. ``kkt_w < 1e-4``: rms of ``g`` (the gradient of ``J`` per pixel flux; ``mu = 0``, the flux is owned by the pixels) over pixels above 1e-3 of the peak, in units of ``w / F``;
+   ``want_grow = 0`` (no pixel below 1e-6 of the peak with ``g < -1e-3 w / F``) and ``zero_violation = 0`` (no pixel at or below zero). These are the components of virgil's
+   ``kkt_report``, not its ``converged`` flag.
+2. Per-class residual: rms ``|g|`` in units of ``w / F`` below 1e-4 above 1e-3 of the peak and below 1e-3 in each of the classes 1e-3 to 1e-6 and below 1e-6.
+3. Newton decrement ``D = 1/2 g' H_f^-1 g < 1/2 kappa_0^2 w``, solved in the scaled variables (matrix ``4 X H_f X`` with ``X = diag sqrt f``, preconditioner ``4 f_i T_ii + 4 w / F``) by CG to
+   relative residual 1e-3. CG's running estimate of ``D`` rises to the truth, so a solve that has not reached its tolerance within ``cg_maxit`` is *not accepted*: the test fails.
+4. Nuisances: the Newton decrement of the dense gain-and-offset block below the same threshold (absent: not applicable).
+
+``band_limit`` is reported by ``kkt_report`` and does not gate. There is no fallback criterion; a run stopped by its step cap is failed (``run_failed``). A method is *certified* only if
+the tests pass at a snapshot **and at every later snapshot** (``certify_series``). ``VirgilObjective`` is the objective on a virgil problem (the 25394917 pin) for the cluster runs and for the
+chain test, ``fit_result`` rebuilds the ``FitResult`` the gate gives ``kkt_report`` (vv ``alma_lambda.py`` ``fit_point``).
+"""
+
+import dataclasses
+import glob
+import time
+
+import numpy as np
+
+from . import alma_optim as ao
+
+KAPPA0 = 1e-4
+KKT_W_MAX = 1e-4
+RES_HI, RES_LOW = 1e-4, 1e-3  # class residual limits: above 1e-3 of the peak; below it
+GROW_TOL = 1e-3  # want_grow: g below -GROW_TOL w/F in a pixel under 1e-6 of the peak
+ACTIVE, FROZEN = 1e-3, 1e-6  # the brightness classes (virgil's _ACTIVE, _FROZEN)
+CG_RTOL, CG_MAXIT = 1e-3, 1500
+# C3 (plan §5.4): beam-convolved image within 1e-3 of peak; J within the decrement threshold; flux 0.1%; gains 1e-3; offsets 0.5 mas
+C3 = dict(image=1e-3, flux=1e-3, gain=1e-3, offset=0.5)
+
+
+def decrement_threshold(w, kappa0=KAPPA0):
+    """``1/2 kappa_0^2 w``: the Newton decrement that ``kkt_w < kappa_0`` implies (the entropy alone gives ``H_ii >= w / (F f_i)``)."""
+    return 0.5 * kappa0**2 * float(w)
+
+
+def newton_decrement(obj, f, g, *, rtol=CG_RTOL, maxit=CG_MAXIT):
+    """``(D, info)``: ``D = 1/2 g' H_f^-1 g`` by CG in the scaled variables; ``info['converged']`` is False when CG did not reach ``rtol`` (the decrement is then not accepted)."""
+    matvec, b, pre = ao.newton_system(obj, f, g)
+    delta, iters, ok, rel = ao._cg(matvec, b, pre, rtol, maxit)
+    return 0.5 * float(b @ delta), dict(iterations=iters, converged=bool(ok), rel_residual=rel)
+
+
+def nuisance_decrement(obj, f):
+    """``(D_theta, n)``: ``1/2 g' H^-1 g`` of the nuisance block (dense), or ``(0.0, 0)`` for an objective without one."""
+    if not hasattr(obj, "nuisance_gh") or np.asarray(obj.theta).size == 0:
+        return 0.0, 0
+    g, H = obj.nuisance_gh(f)
+    return 0.5 * float(g @ np.linalg.solve(H, g)), int(g.size)
+
+
+class Evaluator:
+    """Scores iterates of one objective. ``beam`` (optional) maps a flat flux to the beam-convolved image used in the image comparisons; ``reference`` is the reference ``f*`` and its ``J*``."""
+
+    def __init__(self, obj, *, beam=None, reference=None, cg_rtol=CG_RTOL, cg_maxit=CG_MAXIT):
+        self.obj, self.beam = obj, beam
+        self.cg_rtol, self.cg_maxit = cg_rtol, cg_maxit
+        self.reference, self.J_ref, self.ref_image = None, None, None
+        if reference is not None:
+            self.set_reference(reference)
+
+    def set_reference(self, f, theta=None):
+        if theta is not None:
+            self.obj.set_theta(theta)
+        self.reference = np.array(f, float)
+        self.J_ref = self.obj.value_grad(self.reference)[0]
+        self.ref_image = self._image(self.reference)
+
+    def _image(self, f):
+        return np.asarray(self.beam(f) if self.beam is not None else f, float).ravel()
+
+    def evaluate(self, f, theta=None, *, extra=None):
+        """The record of one iterate: every statistic and the booleans of tests 1 to 4 (``certified`` all four)."""
+        obj = self.obj
+        if theta is not None and np.asarray(theta).size:
+            obj.set_theta(theta)
+        f = np.asarray(f, float)
+        J, g = obj.value_grad(f)
+        unit = obj.weight / obj.flux
+        peak = float(f.max())
+        rel = f / peak
+        hi, mid, low = rel > ACTIVE, (rel <= ACTIVE) & (rel >= FROZEN), rel < FROZEN
+        rms = lambda m: float(np.sqrt(np.mean(g[m] ** 2)) / unit) if m.any() else 0.0  # noqa: E731
+        rec = dict(J=float(J), flux=float(f.sum()), peak=peak, kkt_w=rms(hi), res_hi=rms(hi), res_mid=rms(mid), res_low=rms(low),
+                   want_grow=float(np.mean(low & (g < -GROW_TOL * unit))), zero_violation=float(np.mean(f <= 0)),
+                   n_hi=int(hi.sum()), n_mid=int(mid.sum()), n_low=int(low.sum()))
+        thr = decrement_threshold(obj.weight)
+        D, info = newton_decrement(obj, f, g, rtol=self.cg_rtol, maxit=self.cg_maxit)
+        Dn, nn = nuisance_decrement(obj, f)
+        rec.update(decrement=D, decrement_threshold=thr, cg=info, nuisance_decrement=Dn, n_nuisance=nn)
+        if self.J_ref is not None:
+            rec["J_minus_Jstar"] = float(J - self.J_ref)
+            scale = float(np.max(np.abs(self.ref_image)))
+            rec["image_distance"] = float(np.max(np.abs(self._image(f) - self.ref_image)) / scale)
+        rec["tests"] = dict(
+            kkt_w=rec["kkt_w"] < KKT_W_MAX and rec["want_grow"] == 0 and rec["zero_violation"] == 0,
+            classes=rec["res_hi"] < RES_HI and rec["res_mid"] < RES_LOW and rec["res_low"] < RES_LOW,
+            decrement=bool(info["converged"] and D < thr),
+            nuisance=bool(Dn < thr) if nn else True,
+        )
+        rec["certified"] = bool(all(rec["tests"].values()) and np.isfinite(J))
+        if extra:
+            rec.update(extra)
+        return rec
+
+
+def certify_series(records):
+    """Certification of a run from its scored snapshots (each with ``certified``, ``t`` seconds and ``geq`` gradient-equivalents), in time order: certified only if the tests pass at a snapshot
+    and at **every later snapshot**. Returns ``dict(certified, index, t, geq, n)``; ``t`` and ``geq`` are those of the first snapshot of the final unbroken run of passes."""
+    n = len(records)
+    first = None
+    for i in range(n - 1, -1, -1):
+        if not records[i]["certified"]:
+            break
+        first = i
+    if first is None:
+        return dict(certified=False, index=None, t=None, geq=None, n=n)
+    return dict(certified=True, index=first, t=records[first]["t"], geq=records[first]["geq"], n=n)
+
+
+def run_failed(result):
+    """A run that hit its step cap is failed whatever its snapshots say (the plan: caps are safety limits, a capped fit is not a result)."""
+    return bool(result.capped)
+
+
+def score_snapshots(evaluator, paths, *, log=None):
+    """Score ``snap_NNNN.npz`` files (a run's directory or a list), in order; the records carry the meter's ``t``, ``geq`` and ``steps``. The evaluator's time is not any method's."""
+    if isinstance(paths, str):
+        paths = sorted(glob.glob(paths + "/snap_*.npz"))
+    out = []
+    for p in paths:
+        z = np.load(p)
+        theta = np.asarray(z["theta"], float)
+        rec = evaluator.evaluate(z["f"], theta if theta.size else None, extra=dict(t=float(z["t"]), geq=int(z["geq"]), steps=int(z["steps"]), path=str(p)))
+        out.append(rec)
+        if log:
+            log(f"{p}: t {rec['t']:.0f} s, kkt_w {rec['kkt_w']:.3g}, decrement {rec['decrement']:.3g} / {rec['decrement_threshold']:.3g}, certified {rec['certified']}")
+    return out
+
+
+# ---------------------------------------------------------------- reference, restarts (C3), perturbation (C4)
+
+
+def reference_agreement(evaluator, f_a, f_b):
+    """The reference's own test (plan §4.1): ``|dJ| < 1e-6`` and the beam-convolved image difference below 1e-5 of the peak. Returns ``(agree, dJ, distance)``."""
+    obj = evaluator.obj
+    dJ = abs(obj.value_grad(np.asarray(f_a))[0] - obj.value_grad(np.asarray(f_b))[0])
+    ia, ib = evaluator._image(f_a), evaluator._image(f_b)
+    dist = float(np.max(np.abs(ia - ib)) / np.max(np.abs(ia)))
+    return bool(dJ < 1e-6 and dist < 1e-5), float(dJ), dist
+
+
+def perturb_lognormal(f, dex=0.5, rng=None, flux=None):
+    """C4's perturbation: ``f * 10**(dex * N(0,1))``, rescaled to the flux of ``f`` (or ``flux``)."""
+    rng = np.random.default_rng(0) if rng is None else rng
+    g = np.asarray(f, float) * 10.0 ** (dex * rng.standard_normal(np.shape(f)))
+    return g * (float(np.sum(f)) if flux is None else flux) / g.sum()
+
+
+def gaussian_floor_start(npix, pixel_mas, flux, fwhm_mas=1000.0, floor_jy_arcsec2=1e-4):
+    """The 1 arcsec Gaussian raised to the entropy floor (``alma.floor_start``'s start), flat flux ``flux`` (Jy), pixel flux ``(npix**2,)``; renormalised to ``flux``."""
+    c = (np.arange(npix) - (npix - 1) / 2.0) * pixel_mas
+    r2 = c[:, None] ** 2 + c[None, :] ** 2
+    img = np.exp(-4.0 * np.log(2.0) * r2 / fwhm_mas**2)
+    img *= flux / img.sum()
+    pix_arcsec2 = (pixel_mas / 1000.0) ** 2
+    img = np.maximum(img, floor_jy_arcsec2 * pix_arcsec2)
+    return (img * flux / img.sum()).ravel()
+
+
+def nuisance_starts(obj, theta_ref=None, offset_mas=10.0, gain_frac=0.05):
+    """The two nuisance starts of C3: offsets by ``+/- offset_mas``, gains by ``1 +/- gain_frac`` (opposite signs). ``obj.layout`` names the sites (a ``VirgilObjective``);
+    for a one-gain toy the single parameter is a gain."""
+    ref = np.asarray(obj.theta if theta_ref is None else theta_ref, float)
+    layout = getattr(obj, "layout", [("gain", 0, ref.size)])
+    out = []
+    for sign in (+1.0, -1.0):
+        th = ref.copy()
+        for name, a, b in layout:
+            if "offset" in name:
+                th[a:b] = ref[a:b] + sign * offset_mas
+            elif "gain" in name:
+                th[a:b] = ref[a:b] * (1.0 + sign * gain_frac)
+        out.append(th)
+    return out
+
+
+def compare_fits(evaluator, ref, other, *, theta_ref=None, theta_other=None):
+    """C3/C4 against the converged ``ref``: beam-convolved image within 1e-3 of peak, ``J`` within the decrement threshold, flux within 0.1%, gains within 1e-3, offsets within 0.5 mas.
+    Returns ``dict(passes, ...)`` with the measured numbers."""
+    obj = evaluator.obj
+    if theta_ref is not None:
+        obj.set_theta(theta_ref)
+    Jr = obj.value_grad(np.asarray(ref))[0]
+    if theta_other is not None:
+        obj.set_theta(theta_other)
+    Jo = obj.value_grad(np.asarray(other))[0]
+    ir, io = evaluator._image(ref), evaluator._image(other)
+    out = dict(image=float(np.max(np.abs(io - ir)) / np.max(np.abs(ir))), dJ=float(Jo - Jr), flux=float(abs(np.sum(other) / np.sum(ref) - 1.0)))
+    ok = out["image"] < C3["image"] and out["dJ"] < decrement_threshold(obj.weight) and out["flux"] < C3["flux"]
+    if theta_ref is not None and theta_other is not None:
+        layout = getattr(obj, "layout", [("gain", 0, len(theta_ref))])
+        for name, a, b in layout:
+            d = float(np.max(np.abs(np.asarray(theta_other)[a:b] - np.asarray(theta_ref)[a:b]))) if b > a else 0.0
+            key = "offset" if "offset" in name else "gain"
+            out[f"d_{name}"] = d
+            ok = ok and d < C3[key]
+    out["passes"] = bool(ok)
+    return out
+
+
+# ---------------------------------------------------------------- the objective on a virgil problem
+
+
+def build_s2_problem(data, *, npix, pixel_mas, flux, ref_obs, gains=False, offsets=False, max_offset_mas=20.0):
+    """``alma_lambda.Problem`` for S2: ``LinearImage`` sqrt pixels (flux owned by the pixels, ``reference_flux=flux``), the explicit Toeplitz chi^2, scales fixed
+    (``sigmas=False``), gains and offsets fitted or not. With offsets the Toeplitz precompute spreads the box ``+/- max_offset_mas``."""
+    import numpyro.distributions as dist
+    from virgil import LinearImage
+    from virgil.radio import CalibrationNuisance
+
+    from . import alma as va
+    from . import alma_lambda as vl
+
+    shift = -pixel_mas / 2.0
+
+    def scene(values):
+        return LinearImage(values["pixels"], pixel_mas, dra=shift, ddec=shift, ft="auto", parametrization="sqrt", reference_flux=flux)
+
+    nuis = CalibrationNuisance(data, ref_obs=ref_obs, alpha=False, gains=gains, offsets=offsets, sigmas=False, fit_flux=False)
+    if offsets:
+        term, _ = va.toeplitz_term(data, scene, nuis, npix=npix, pixel_mas=pixel_mas, mask=None, max_offset_mas=float(max_offset_mas))
+    else:
+        term = data.term(scene, nuis, chi2="toeplitz")
+    priors = {"pixels": dist.ImproperUniform(dist.constraints.real, (), event_shape=(npix, npix))}
+    if gains or offsets:
+        priors.update(nuis.priors(**({"offset": (-float(max_offset_mas), float(max_offset_mas))} if offsets else {})))
+    return vl.Problem(data, scene, nuis, term, priors, int(npix), float(pixel_mas), float(flux))
+
+
+class VirgilObjective(ao.Objective):
+    """``J = 1/2 chi2 + MaxEntropy(w)`` of a ``Problem`` (``build_s2_problem``) in pixel flux. The data term is exactly quadratic in ``f`` (the model is linear in flux), so ``hvp`` is the
+    constant ``T v``. With ``free`` nuisance sites (default none) ``theta`` holds them, flattened in ``layout`` order; the rest stay at ``fixed`` (default: the nuisance defaults).
+    ``diag`` takes ``T_ii`` of the centre pixel for all (shift invariance of the Toeplitz term: an estimate, used only to precondition)."""
+
+    def __init__(self, prob, weight, *, free=(), fixed=None):
+        import jax
+        import jax.numpy as jnp
+
+        if not jax.config.jax_enable_x64:
+            raise RuntimeError("float64 is required: set jax_enable_x64 before building the problem")
+        self.prob = prob
+        super().__init__(prob.npix**2, prob.flux, weight)
+        defaults = {k: jnp.asarray(v, float) for k, v in prob.nuisance.defaults().items()}
+        fixed = {**defaults, **{k: jnp.asarray(v, float) for k, v in (fixed or {}).items()}}
+        free = tuple(free)
+        self.layout, a = [], 0
+        for k in free:
+            size = int(np.size(fixed[k]))
+            self.layout.append((k, a, a + size))
+            a += size
+        self._shapes = {k: np.shape(fixed[k]) for k in free}
+        self.theta = np.concatenate([np.asarray(fixed[k], float).ravel() for k in free]) if free else np.zeros(0)
+        self._fixed, self._free = {k: v for k, v in fixed.items() if k not in free}, free
+        shape = (prob.npix, prob.npix)
+
+        def values(f, theta):
+            v = dict(self._fixed)
+            for k, a0, b0 in self.layout:
+                v[k] = theta[a0:b0].reshape(self._shapes[k])
+            v["pixels"] = jnp.sqrt(jnp.maximum(f, 1e-300)).reshape(shape)
+            return v
+
+        def half(f, theta):
+            return 0.5 * prob.term.full_chi2_and_log_norm(values(f, theta))[0]
+
+        self._vg = jax.jit(jax.value_and_grad(half))
+        gr = jax.grad(half)
+        self._hvp = jax.jit(lambda f, v, theta: jax.jvp(lambda x: gr(x, theta), (f,), (v,))[1])
+        self._ng = jax.jit(lambda f, theta: jax.grad(half, argnums=1)(f, theta)) if free else None
+        self._nh = jax.jit(lambda f, theta: jax.hessian(half, argnums=1)(f, theta)) if free else None
+        self._f0 = jnp.full(self.n, self.q)  # the data term is quadratic: its curvature at any positive point
+        self._diag, self._lip = None, None
+
+    def set_theta(self, theta):
+        self.theta = np.asarray(theta, float).copy()
+
+    def data_vg(self, f):
+        import jax.numpy as jnp
+
+        v, g = self._vg(jnp.asarray(f), jnp.asarray(self.theta))
+        return float(v), np.asarray(g, float)
+
+    def hvp(self, v):
+        import jax.numpy as jnp
+
+        return np.asarray(self._hvp(self._f0, jnp.asarray(v, float), jnp.asarray(self.theta)), float)
+
+    def diag(self):
+        if self._diag is None:
+            e = np.zeros(self.n)
+            c = (self.prob.npix // 2) * self.prob.npix + self.prob.npix // 2
+            e[c] = 1.0
+            self._diag = np.full(self.n, float(self.hvp(e)[c]))
+        return self._diag
+
+    def lipschitz(self, iters=30):
+        if self._lip is None:
+            v = np.random.default_rng(0).standard_normal(self.n)
+            lam = 0.0
+            for _ in range(iters):
+                v /= np.linalg.norm(v)
+                tv = self.hvp(v)
+                lam = float(v @ tv)
+                v = tv
+            self._lip = 1.05 * lam  # a margin: power iteration approaches from below
+        return self._lip
+
+    def nuisance_gh(self, f):
+        import jax.numpy as jnp
+
+        return np.asarray(self._ng(jnp.asarray(f), jnp.asarray(self.theta)), float), np.asarray(self._nh(jnp.asarray(f), jnp.asarray(self.theta)), float)
+
+    def values(self, f):
+        """The ``values`` dict of a ``FitResult`` for ``f`` at the current nuisances."""
+        import jax.numpy as jnp
+
+        out = {k: jnp.asarray(v) for k, v in self._fixed.items() if k in self.prob.priors}
+        for k, a, b in self.layout:
+            out[k] = jnp.asarray(self.theta[a:b].reshape(self._shapes[k]))
+        out["pixels"] = jnp.sqrt(jnp.asarray(f)).reshape(self.prob.npix, self.prob.npix)
+        return out
+
+
+def fit_result(objective, f, *, n_real=None):
+    """The ``FitResult`` of ``f`` as the gate rebuilds it for ``kkt_report`` (``fit_point``: the result's model replaced by ``prob.model``), method ``lbfgsb``."""
+    from virgil.fitting import FitResult
+
+    info = dict(method="lbfgsb", steps=0, converged=True, stop=None)
+    if n_real is not None:
+        info["ndata"] = [float(n_real)]
+    return FitResult(model=objective.prob.model, values=objective.values(f), info=info)
+
+
+def virgil_kkt(objective, f):
+    """``kkt_report`` of ``f`` through virgil: ``(kkt_w, band_limit, want_grow, converged)`` of the image block, via the rebuilt ``FitResult``."""
+    from virgil.fitting import kkt_report
+    from virgil.imaging import MaxEntropy
+
+    reg = MaxEntropy(float(objective.weight))
+    rep = kkt_report(fit_result(objective, f), objective.prob.priors, (), [reg], likelihoods=[objective.prob.term], weight=float(objective.weight))
+    (img,) = rep["images"].values()
+    return dict(kkt_w=float(img["kkt_w"]), band_limit=float(img.get("band_limit", np.nan)), want_grow=float(img["want_grow"]), converged=bool(rep["converged"]), report=rep)
+
+
+def provenance(env=None):
+    """The commits under test (virgil's pinned snapshot and this repository's), as ``dsharp_fit.provenance`` records them."""
+    import os
+    import pathlib
+    import re
+
+    from evidence import meta
+
+    env = os.environ if env is None else env
+    src = dict(meta.virgil_source())
+    pinned = env.get("PIN_VIRGIL_SRC")
+    if pinned and re.fullmatch(r"[0-9a-f]{40}", pathlib.Path(pinned).parent.name):
+        src = dict(commit=pathlib.Path(pinned).parent.name, url=pinned, dirty=False)
+    return dict(virgil_commit=src.get("commit"), virgil_dirty=src.get("dirty"), virgil_source=src.get("url"),
+                validation_commit=meta.own_commit() or env.get("PIN_COMMIT"), pins=env.get("PIN_DESC"), when=time.strftime("%Y-%m-%dT%H:%M:%S%z"))
