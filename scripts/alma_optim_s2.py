@@ -136,7 +136,7 @@ def cmd_plan(args):
 
 def synthetic_truth(npix, pixel_mas, flux):
     """A bright ring with a gap-free core and a faint halo (Jy/arcsec^2): IM Lup's dynamic range, for tuning only."""
-    c = (np.arange(npix) - (npix - 1) / 2.0) * pixel_mas
+    c = (np.arange(npix) - (npix // 2 - 1)) * pixel_mas
     r = np.hypot(c[:, None], c[None, :])
     img = 1.0 * np.exp(-0.5 * ((r - 700.0) / 120.0) ** 2) + 0.4 * np.exp(-0.5 * (r / 250.0) ** 2) + 1e-4 * np.exp(-0.5 * (r / 1500.0) ** 2)
     return img * flux / (img.sum() * (pixel_mas / 1000.0) ** 2)
@@ -155,6 +155,9 @@ def cmd_tune(args):
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     data = va.load_dir(args.data)
+    if args.shat:  # the same weights as `load`: s = 1 after the rescale
+        shat = va.read_shat(args.shat, int(np.asarray(data.ddid).max()) + 1)
+        data = dataclasses.replace(data, weight=np.asarray(data.weight, float) / shat[np.asarray(data.ddid)] ** 2)
     npix, px = 256, NPIX * PIXEL_MAS / 256
     flux = vl.flux_scale(data)
     truth = synthetic_truth(npix, px, flux)
@@ -238,16 +241,25 @@ def cmd_reference(args):
         beam = beam_of(obj.prob.npix, obj.prob.pixel_mas, args.beam_mas)
         ev = ac.Evaluator(obj, beam=beam)
         polished = []
+        joint_ref = bool(np.size(obj.theta))
         for m in args.methods.split(","):  # two families: one quasi-Newton, one Newton
             res = ao.run(m, obj, obj.flat(), budget_s=3 * args.budget, out=out / f"{reference_stem(args.tier, mult)}_{m}", snap_every=args.snap_every, **tuned(args, m))
             obj.set_theta(res.theta)
             f, k = ao.polish(obj, res.f)
-            polished.append((m, f, np.array(res.theta, float)))
+            if joint_ref:  # tier B: the image and the nuisances are polished together, alternating until the nuisance step stops moving
+                for _ in range(6):
+                    th0 = np.array(obj.theta, float)
+                    ao.newton_nuisance(obj, f, max_steps=10)
+                    f, k2 = ao.polish(obj, f)
+                    k += k2
+                    if np.max(np.abs(np.array(obj.theta, float) - th0)) < 1e-9:
+                        break
+            polished.append((m, f, np.array(obj.theta, float)))
             say(f"reference {args.tier} w{mult} {m}: {res.reason} {res.wall:.0f} s, polished in {k} Newton rounds")
         (ma, fa, ta), (mb, fb, tb) = polished
         obj.set_theta(ta)
         ev.set_reference(fb, tb)
-        agree, dJ, dist = ac.reference_agreement(ev, fa, fb)
+        agree, dJ, dist = ac.reference_agreement(ev, fa, fb, ta, tb)
         rec = dict(methods=[ma, mb], tier=args.tier, weight_mult=mult, w=obj.weight, agree=agree, dJ=dJ, image_distance=dist, status="ok" if agree else "failed", provenance=ac.provenance())
         certified = [bool(ev.evaluate(f_, t_)["certified"]) for f_, t_ in ((fa, ta), (fb, tb))]  # two methods stalled at the same uncertified point would "agree"
         rec["both_certified"] = certified

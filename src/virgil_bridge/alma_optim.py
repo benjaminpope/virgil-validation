@@ -337,11 +337,18 @@ def lbfgs(obj, meter, f0, memory=20, **_):
     x = np.sqrt(np.asarray(f0, float))
     S, Y = [], []
 
+    cache = {}
+
+    def vg(x):  # one evaluation serves the value and the gradient of the line search's trial point
+        if cache.get("x") is None or not np.array_equal(cache["x"], x):
+            cache["x"], cache["vg"] = x.copy(), meter.vg(x * x)
+        return cache["vg"]
+
     def fun(x):
-        return meter.vg(x * x)[0]
+        return vg(x)[0]
 
     def jac(x):
-        return 2.0 * x * meter.vg(x * x)[1]
+        return 2.0 * x * vg(x)[1]
 
     J, g = meter.vg(x * x)
     gx = 2.0 * x * g

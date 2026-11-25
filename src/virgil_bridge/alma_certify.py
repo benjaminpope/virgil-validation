@@ -153,13 +153,31 @@ def score_snapshots(evaluator, paths, *, log=None):
 # ---------------------------------------------------------------- reference, restarts (C3), perturbation (C4)
 
 
-def reference_agreement(evaluator, f_a, f_b):
-    """The reference's own test (plan §4.1): ``|dJ| < 1e-6`` and the beam-convolved image difference below 1e-5 of the peak. Returns ``(agree, dJ, distance)``."""
+def reference_agreement(evaluator, f_a, f_b, theta_a=None, theta_b=None):
+    """The reference's own test (plan §4.1): ``|dJ| < 1e-6`` (each ``J`` at its own nuisances) and the beam-convolved image difference below 1e-5 of the peak; with nuisances, they also agree to a
+    tenth of the C3 tolerances (gains, offsets). Returns ``(agree, dJ, distance)``."""
     obj = evaluator.obj
-    dJ = abs(obj.value_grad(np.asarray(f_a))[0] - obj.value_grad(np.asarray(f_b))[0])
+    theta0 = np.array(obj.theta, float)
+    try:
+        if theta_a is not None and np.size(theta_a):
+            obj.set_theta(theta_a)
+        Ja = obj.value_grad(np.asarray(f_a))[0]
+        if theta_b is not None and np.size(theta_b):
+            obj.set_theta(theta_b)
+        Jb = obj.value_grad(np.asarray(f_b))[0]
+    finally:
+        if theta0.size:
+            obj.set_theta(theta0)
+    dJ = abs(Ja - Jb)
     ia, ib = evaluator._image(f_a), evaluator._image(f_b)
     dist = float(np.max(np.abs(ia - ib)) / np.max(np.abs(ia)))
-    return bool(dJ < 1e-6 and dist < 1e-5), float(dJ), dist
+    ok = bool(dJ < 1e-6 and dist < 1e-5)
+    if theta_a is not None and theta_b is not None and np.size(theta_a):
+        for name, a, b in getattr(obj, "layout", [("gain", 0, len(theta_a))]):
+            if b > a:
+                d = float(np.max(np.abs(np.asarray(theta_b)[a:b] - np.asarray(theta_a)[a:b])))
+                ok = ok and d < 0.1 * C3["offset" if "offset" in name else "gain"]
+    return ok, float(dJ), dist
 
 
 def perturb_lognormal(f, dex=0.5, rng=None, flux=None):
@@ -171,7 +189,7 @@ def perturb_lognormal(f, dex=0.5, rng=None, flux=None):
 
 def gaussian_floor_start(npix, pixel_mas, flux, fwhm_mas=1000.0, floor_jy_arcsec2=1e-4):
     """The 1 arcsec Gaussian raised to the entropy floor (``alma.floor_start``'s start), flat flux ``flux`` (Jy), pixel flux ``(npix**2,)``; renormalised to ``flux``."""
-    c = (np.arange(npix) - (npix - 1) / 2.0) * pixel_mas
+    c = (np.arange(npix) - (npix // 2 - 1)) * pixel_mas  # the sky phase centre under the half-pixel convention (crosscheck.alma_maxent.phase_centre_cell)
     r2 = c[:, None] ** 2 + c[None, :] ** 2
     img = np.exp(-4.0 * np.log(2.0) * r2 / fwhm_mas**2)
     img *= flux / img.sum()
@@ -193,6 +211,9 @@ def nuisance_starts(obj, theta_ref=None, offset_mas=10.0, gain_frac=0.05):
                 th[a:b] = ref[a:b] + sign * offset_mas
             elif "gain" in name:
                 th[a:b] = ref[a:b] * (1.0 + sign * gain_frac)
+        if hasattr(obj, "theta_bounds"):  # a start outside the prior box would abort the Toeplitz shift: clip inside it
+            lo, hi = obj.theta_bounds()
+            th = np.clip(th, lo, hi)
         out.append(th)
     return out
 
@@ -438,14 +459,18 @@ def _converge(obj, method, f0, theta0, ev, *, budget_s, check_s):
     """Reconverge to the stop test from ``f0`` at ``theta0`` with S2 method ``method``: the method runs in slices of ``check_s``, a Newton-CG polish and the evaluator follow each, and the
     run ends at the first certified slice or at ``budget_s``. Returns ``(f, theta, record, seconds)``."""
     obj.set_theta(theta0)
-    f, spent, rec = np.asarray(f0, float), 0.0, None
+    f, rec = np.asarray(f0, float), None
+    t0 = time.perf_counter()
+    spent = 0.0  # wall clock of everything below (method, polish, nuisance step, evaluation), so a method that stalls at once cannot loop uncharged
     while spent < budget_s:
         res = ao.run(method, obj, f, budget_s=min(check_s, budget_s - spent))
-        spent += res.wall
         f = res.f
         obj.set_theta(res.theta)
         f, _ = ao.polish(obj, f, rounds=20)
-        rec = ev.evaluate(f, res.theta)
+        if np.size(obj.theta) and hasattr(obj, "nuisance_gh"):
+            ao.newton_nuisance(obj, f, max_steps=5)  # the polished image moved: bring the nuisances to it
+        rec = ev.evaluate(f, np.array(obj.theta, float))
+        spent = time.perf_counter() - t0
         if rec["certified"]:
             break
     return f, np.array(obj.theta, float), rec, spent
@@ -458,7 +483,7 @@ def _restart_row(ev, f_ref, th_ref, f, th, rec, spent):
 
 def _far_field(obj, f, aperture_mas, n_ann=8):
     n, px = obj.prob.npix, obj.prob.pixel_mas
-    c = (np.arange(n) - (n - 1) / 2.0) * px
+    c = (np.arange(n) - (n // 2 - 1)) * px
     r = np.hypot(c[:, None], c[None, :]).ravel()
     flux = float(np.sum(f))
     edges = np.linspace(0.0, float(np.max(np.abs(c))), n_ann + 1)
