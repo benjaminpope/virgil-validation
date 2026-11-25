@@ -1,0 +1,101 @@
+{
+ "case": "I-sim-ring",
+ "comparison": "imaging",
+ "code": "virgil",
+ "config": "matched",
+ "threads": 1,
+ "size": "full",
+ "status": "ok",
+ "t_process": 0.8113925409998046,
+ "t_calib": 0.2680168499937281,
+ "t_import": 3.9749381329893367,
+ "t_load": 0.8909951020032167,
+ "t_init": null,
+ "t_cold": 12.573913605010603,
+ "t_warm": [
+  10.812550930990255,
+  10.895503987005213,
+  10.988932544001727,
+  10.98714146700513,
+  11.008615335987997
+ ],
+ "peak_footprint_mb": 1257.14,
+ "peak_rss_mb": 1257.14,
+ "baseline_mb": null,
+ "cpu_ratio": 1.133564489940934,
+ "flags": [],
+ "n_data": 312,
+ "n_param": 2304,
+ "iterations": {
+  "steps": 6905
+ },
+ "accuracy": {
+  "converged": true,
+  "stop": null,
+  "loss": 625.7369567211445,
+  "score": {
+   "J": 625.7369567186431,
+   "half_chi2_amp": 116.44210884804377,
+   "half_chi2_cp": 26.640728466839768,
+   "tv2": 0.0006435388258716795,
+   "flux": 1.0,
+   "n_amp": 234,
+   "n_cp": 78,
+   "ncc_registered": 0.6283964130416639,
+   "ncc_shift_rc": [
+    -1,
+    -3
+   ],
+   "ncc_unregistered": 0.1963144928991623,
+   "rms_rel_beam": 0.25388847315094926,
+   "beam_mas": 1.5448696219530984
+  }
+ },
+ "settings": {
+  "case": "I-sim-ring",
+  "task": "stop_default",
+  "reps": 5,
+  "size": "full",
+  "method": "lbfgsb",
+  "gtol": 0.0001,
+  "max_steps": 20000,
+  "memory": 50,
+  "run": "r2",
+  "jax_cache": "cold",
+  "device": "gpu",
+  "gpu": "NVIDIA A100-SXM4-80GB"
+ },
+ "provenance": {
+  "vv_commit": null,
+  "vv_dirty": false,
+  "virgil_pin": "09b268521072a83f73bc0a77defa6485db270c7b",
+  "versions": {
+   "virgil-astro": null,
+   "jax": "0.12.0.1",
+   "jaxlib": "0.12.0.1",
+   "numpyro": "0.22.0",
+   "pmoired": "26.10.1",
+   "ehtim": null,
+   "numpy": "2.5.4",
+   "scipy": "1.18.1",
+   "arviz": null,
+   "astropy": "8.0.2"
+  },
+  "python": "3.12.7",
+  "macos": "",
+  "chip": "AMD EPYC 7543 32-Core Processor",
+  "cpu_count": 64,
+  "thread_env": {
+   "OMP_NUM_THREADS": "1",
+   "OPENBLAS_NUM_THREADS": "1",
+   "VECLIB_MAXIMUM_THREADS": "1",
+   "MKL_NUM_THREADS": "1",
+   "NUMEXPR_NUM_THREADS": "1",
+   "XLA_FLAGS": "--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1 --xla_cpu_parallel_codegen_split_count=1 --xla_cpu_use_xnnpack=false --xla_cpu_enable_concurrency_optimized_scheduler=false",
+   "JAX_PLATFORMS": "cuda",
+   "JULIA_NUM_THREADS": "1"
+  },
+  "data_manifest_sha256": "9ff0c4e5432d399dab1b2db62ae15a4b3066af304147876be59a21020f540205"
+ },
+ "language": "python"
+}

@@ -29,13 +29,13 @@ def central_radius_pix(wcs, arcsec=CENTRAL_ARCSEC):
     return arcsec / px
 
 
-def one(fit_dir, ref_path, pbcor=False):
+def one(fit_dir, ref_path, pbcor=False, fov=CENTRAL_ARCSEC):
     """``(ours, ref, wcs, beam, stats)`` for one fit directory and released image (``pbcor``: the image is primary-beam corrected, see
     ``ds.our_image_in_beam``). The statistics use only the pixels inside our image's footprint on the released grid."""
     image = pathlib.Path(fit_dir) / "image.fits"
     ours, ref, wcs, beam = ds.our_image_in_beam(image, ref_path, pbcor=pbcor)
     foot = ds.our_footprint(image, ref_path)
-    r = central_radius_pix(wcs)
+    r = central_radius_pix(wcs, fov)
     stats = dict(whole=ds.compare_stats(ours, ref, footprint=foot), central=ds.compare_stats(ours, ref, radius_pix=r, footprint=foot),
                  beam_mas_mas_deg=list(beam), pixel_mas=float(abs(wcs.wcs.cdelt[0]) * 3.6e6), pbcor_applied=bool(pbcor))
     res = pathlib.Path(fit_dir) / "result.json"
@@ -123,15 +123,15 @@ def _fig(rows):
 def cmd_compare(args):
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
-    ours, ref, wcs, beam, stats = one(args.fit, args.ref, ds.target(args.target)["image"]["pbcor"])
+    ours, ref, wcs, beam, stats = one(args.fit, args.ref, ds.target(args.target)["image"]["pbcor"], fov=args.fov)
     stats["target"] = args.target
     (out / "compare.json").write_text(json.dumps(stats, indent=1))
     plt, fig, axs = _fig(1)
-    panels(axs[0], ours, ref, wcs, ds.target(args.target)["name"])
+    panels(axs[0], ours, ref, wcs, ds.target(args.target)["name"], half_arcsec=args.fov)
     fig.savefig(out / "compare.png", dpi=130)
     plt.close(fig)
     c = stats["central"]
-    print(f"{args.target}: central 2\": rms(diff)/peak {c['rms_over_peak']:.3f}, correlation {c['correlation']:.3f}, flux ratio {c['flux_ratio']:.3f}, peak ratio {c['peak_ratio']:.3f}")
+    print(f"{args.target}: central {args.fov:g}\": rms(diff)/peak {c['rms_over_peak']:.3f}, correlation {c['correlation']:.3f}, flux ratio {c['flux_ratio']:.3f}, peak ratio {c['peak_ratio']:.3f}")
 
 
 def cmd_preview(args):
@@ -160,6 +160,7 @@ def main(argv=None):
     q.add_argument("--target", required=True, choices=ds.CAMPAIGN)
     q.add_argument("--fit", required=True)
     q.add_argument("--ref", required=True)
+    q.add_argument("--fov", type=float, default=CENTRAL_ARCSEC, help="half-width in arcsec of the plotted field and of the statistics radius")
     q.add_argument("--out", required=True)
     q.set_defaults(fn=cmd_compare)
     q = sub.add_parser("preview")

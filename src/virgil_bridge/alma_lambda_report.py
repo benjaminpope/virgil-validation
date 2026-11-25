@@ -89,7 +89,7 @@ def blur(image, pixel_mas, beam, fraction=1.0):
     bmaj, bmin, pa = (fraction * beam[0], fraction * beam[1], np.radians(beam[2]))
     fr = np.fft.fftfreq(image.shape[0], d=pixel_mas)[:, None]  # cycles/mas along rows (rows run towards South)
     fc = np.fft.fftfreq(image.shape[1], d=pixel_mas)[None, :]  # along columns (towards West): the quadratic form below is even in the common sign
-    sig = np.array([bmaj, bmin]) / 2.3548
+    sig = np.array([bmaj, bmin]) / (2.0 * np.sqrt(2.0 * np.log(2.0)))
     f_maj = fc * (-np.sin(pa)) + fr * (-np.cos(pa))  # major axis direction (East, North) = (sin PA, cos PA), in (col, row) the opposite signs
     f_min = fc * (-np.cos(pa)) + fr * np.sin(pa)
     kernel = np.exp(-2 * np.pi**2 * ((sig[0] * f_maj) ** 2 + (sig[1] * f_min) ** 2))
@@ -275,7 +275,7 @@ def checks_of(rec):
     else:
         ok4, val4 = None, "—"
     out.append(check("D4", f"scatter estimator unbiased on CLEAN + noise of known s² ({vl.D4_REALISATIONS} realisations)", f"|mean − s²| ≤ 2 sd/√{vl.D4_REALISATIONS} and ≤ {vl.D4_REL_MAX:g} s²", val4, ok4))
-    pts = sw["points"] if _has(sw, "points") else None
+    pts = sw["points"] if _has(sw, "points") and "m" in sw["points"][0] else None  # an item-6 failure on the grid fits has a table without m or g
     out.append(check("D1", "m > 0 at the first grid point", f"w/s² = {vl.GRID_MAX:g}", g(pts[0]["m"]) if pts else "—", pts[0]["m"] > 0 if pts else None))
     out.append(check("D1", "m(w) changes sign on the fixed grid", f"w/s² {vl.GRID_MAX:g} to {vl.GRID_MIN:g}, steps ×√10", f"{len(sw['crossings'])} crossing(s)" if _has(sw, "crossings") else "—", len(sw["crossings"]) > 0 if _has(sw, "crossings") else None))
     out.append(check("D2", "|m| at the root within 3 se(G)", f"≤ 3 se(G); ≤ {vl.MAX_SECANT} secant steps",
@@ -323,8 +323,8 @@ def grid_section(sw):
     pts = sw["points"]
     rows = []
     for i, p in enumerate(pts):
-        cross = i + 1 < len(pts) and (p["m"] > 0) != (pts[i + 1]["m"] > 0)
-        rows.append((g(p["w_over_s2"]), g(p["chi2"], ".6g"), g(p["m"]), g(p["g"]), g(p["kkt_w"], ".2g"), g(p["band_limit"]), "crossing below" if cross else ""))
+        cross = i + 1 < len(pts) and "m" in p and "m" in pts[i + 1] and (p["m"] > 0) != (pts[i + 1]["m"] > 0)
+        rows.append((g(p["w_over_s2"]), g(p["chi2"], ".6g"), g(p.get("m")), g(p.get("g")), g(p["kkt_w"], ".2g"), g(p["band_limit"]), "crossing below" if cross else ""))
     return table(["w/s²", "χ²", "m", "G", "kkt_w", "band limit", ""], rows)
 
 

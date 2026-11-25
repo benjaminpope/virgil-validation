@@ -1,0 +1,82 @@
+{
+ "case": "I-sim-large",
+ "comparison": "imaging",
+ "code": "virgil",
+ "config": "matched",
+ "threads": 1,
+ "size": "full",
+ "status": "gate_failed",
+ "t_process": 1.367176441999618,
+ "t_calib": 0.2813253549975343,
+ "t_import": 4.385366503993282,
+ "t_load": 1.0528964169934625,
+ "t_init": null,
+ "t_cold": 0.8361755039950367,
+ "t_warm": [
+  0.00018206111999461428,
+  0.0001812445599352941,
+  0.00019451909989584237,
+  0.00018228613975225017,
+  0.0001813954600947909
+ ],
+ "peak_footprint_mb": 1252.66,
+ "peak_rss_mb": 1252.66,
+ "baseline_mb": null,
+ "cpu_ratio": 1.1189837657274113,
+ "flags": [],
+ "n_data": 6750,
+ "n_param": 2304,
+ "iterations": {
+  "calls": 50
+ },
+ "accuracy": {
+  "per_call_calls": 50,
+  "value_at_start": 52026474.15439216
+ },
+ "settings": {
+  "case": "I-sim-large",
+  "task": "per_eval",
+  "reps": 5,
+  "size": "full",
+  "calls": 50,
+  "run": "r2",
+  "jax_cache": "cold",
+  "device": "gpu",
+  "gpu": "NVIDIA A100-SXM4-80GB",
+  "method": null,
+  "reason": "gate against the neutral scorer failed: worst relative difference 0.0185 (tolerance 1e-09); see gate_results.json"
+ },
+ "provenance": {
+  "vv_commit": null,
+  "vv_dirty": false,
+  "virgil_pin": "09b268521072a83f73bc0a77defa6485db270c7b",
+  "versions": {
+   "virgil-astro": null,
+   "jax": "0.12.0.1",
+   "jaxlib": "0.12.0.1",
+   "numpyro": "0.22.0",
+   "pmoired": "26.10.1",
+   "ehtim": null,
+   "numpy": "2.5.4",
+   "scipy": "1.18.1",
+   "arviz": null,
+   "astropy": "8.0.2"
+  },
+  "python": "3.12.7",
+  "macos": "",
+  "chip": "AMD EPYC 7543 32-Core Processor",
+  "cpu_count": 64,
+  "thread_env": {
+   "OMP_NUM_THREADS": "1",
+   "OPENBLAS_NUM_THREADS": "1",
+   "VECLIB_MAXIMUM_THREADS": "1",
+   "MKL_NUM_THREADS": "1",
+   "NUMEXPR_NUM_THREADS": "1",
+   "XLA_FLAGS": "--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1 --xla_cpu_parallel_codegen_split_count=1 --xla_cpu_use_xnnpack=false --xla_cpu_enable_concurrency_optimized_scheduler=false",
+   "JAX_PLATFORMS": "cuda",
+   "JULIA_NUM_THREADS": "1"
+  },
+  "data_manifest_sha256": "9ff0c4e5432d399dab1b2db62ae15a4b3066af304147876be59a21020f540205"
+ },
+ "language": "python"
+}

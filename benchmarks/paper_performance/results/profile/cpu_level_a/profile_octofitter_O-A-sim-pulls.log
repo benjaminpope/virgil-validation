@@ -1,0 +1,11 @@
+WARNING: Overriding HOME environment variable with APPTAINERENV_HOME is not permitted
+[ Info: [bench] observing_geometry = false (user)
+[ Info: [bench] barycentric_lighttime = false (user)
+[ Info: Preparing model
+┌ Info: Determined number of free variables
+└   D = 11
+┌ Info: Determined number type
+└   T = Float64
+ℓπcallback(θ): 0.000022 seconds
+∇ℓπcallback(θ): 0.000029 seconds (1 allocation: 32 bytes)
+PROFILE_OCTOFITTER {"draws":1000,"per_call_us":{"logdensity":{"min_us":1.302,"median_us":1.342},"grad":{"min_us":6.081,"median_us":6.161}},"n_param":11,"case":"O-A-sim-pulls","config":"matched","versions":{"julia":"1.12.7","octofitter":"9.0.0"},"warm":{"steps_all_chains":93492.0,"note":"chains run one after another; the warm time covers warmup + draws, steps the draws only (NaN: n_steps absent from the chain)","us_per_step_all":20.13045083001754,"t_s":1.882036109},"chains":4,"julia_threads":1,"calls":500,"warmup":1000}

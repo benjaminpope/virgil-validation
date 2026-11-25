@@ -97,7 +97,7 @@ def trapezoid_log_weights(n):
     return np.log(w / w.sum())
 
 
-@pytest.mark.validates("virgil.detection.detection_statistics", roots=["mathematics"])
+@pytest.mark.validates("virgil.detection.detection_statistics", roots=["mathematics"], headline="abs_ddelta_chi2")
 def test_detection_statistics_rebuilt_on_the_grid(dataset):
     kind, data, d = dataset
     with np.errstate(all="ignore"):
@@ -175,8 +175,9 @@ def test_log_uniform_evidence_by_quadrature(dataset, bounds):
     assert worst < 1e-6
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("scale", [1.0, 1.5])
-@pytest.mark.validates("virgil.detection.gaussian_null", roots=["statistics"])
+@pytest.mark.validates("virgil.detection.gaussian_null", roots=["statistics"], tier="B")
 def test_gaussian_null_noise_is_standard_normal(dataset, scale):
     _, data, _ = dataset
     scene = vm.BinaryModelCartesian(0.0, 0.0, 0.0)

@@ -259,8 +259,9 @@ def our_fisher(loaded, p, unravel, flat, h=1e-6):
     return F
 
 
+@pytest.mark.slow
 @pytest.mark.validates("virgil.inference.gaussian_fisher", "virgil.likelihood.joint_prediction",
-                       "virgil.likelihood.joint_errors", roots=["mathematics"])
+                       "virgil.likelihood.joint_errors", roots=["mathematics"], tier="B")
 def test_gaussian_fisher_of_the_joint_prediction(pair):
     obs, loaded = pair
 
@@ -289,7 +290,7 @@ def test_gaussian_fisher_is_not_unweighted(pair):
     assert np.max(np.abs(np.asarray(F) - wrong) / np.sqrt(np.outer(np.diag(F), np.diag(F)))) > 0.5
 
 
-@pytest.mark.validates("virgil.inference.fisher_projection", roots=["mathematics"])
+@pytest.mark.validates("virgil.inference.fisher_projection", roots=["mathematics"], headline="max_rel_dPPt")
 def test_fisher_projection_whitens_the_fisher_matrix():
     J, sigma, _ = linear_problem()
     F = J.T @ np.diag(1 / sigma**2) @ J
@@ -332,7 +333,8 @@ def test_laplace_parameter_uncertainty_is_the_curvature_of_our_chi2(pair):
 # --------------------------------------------------------------- likelihood
 
 
-@pytest.mark.validates("virgil.likelihood.joint_loglike", roots=["mathematics"])
+@pytest.mark.slow
+@pytest.mark.validates("virgil.likelihood.joint_loglike", roots=["mathematics"], tier="B")
 def test_joint_loglike_is_the_sum_of_independent_gaussians(pair):
     obs, loaded = pair
     worst = 0.0
@@ -369,7 +371,7 @@ def test_joint_loglike_keeps_each_dataset_its_own_parameters(pair):
 
 
 @pytest.mark.validates("virgil.likelihood.joint_prediction", "virgil.likelihood.joint_data",
-                       "virgil.likelihood.joint_errors", roots=["mathematics"])
+                       "virgil.likelihood.joint_errors", roots=["mathematics"], headline="max_abs_dprediction")
 def test_joint_vectors_match_our_files_and_observables(pair):
     obs, loaded = pair
     y, e = np.asarray(likelihood.joint_data(obs)), np.asarray(likelihood.joint_errors(obs))

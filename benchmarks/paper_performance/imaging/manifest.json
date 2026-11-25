@@ -1,0 +1,12 @@
+{
+ "comparison": "imaging",
+ "seed": 1,
+ "files": {
+  "sim-large.fits": "1cafec3c8c492cefdcdf685b896afc4228f05804c97e3751ef32b91063551667",
+  "sim-large.npz": "fd037fb818f2238ca6e7c02115a7d99f56b95559921434d4376bdad14d119159",
+  "sim-ring.fits": "01d321a6c928f5566db10910f28a12aee8813c345b833c2027ef522ce27ac472",
+  "sim-ring.npz": "a03183c195175563c03c94c9af4a6a6f52ee3604400724c37861a366caf6a500",
+  "sim-well.fits": "fd6eb3b0a151ab08e6563070356c12d59070ecf416fb1137305ac770e896541e",
+  "sim-well.npz": "e67cf5f195f659185453c5509de7fab79265b220d9d8c8730b3bb6a7d166eacd"
+ }
+}

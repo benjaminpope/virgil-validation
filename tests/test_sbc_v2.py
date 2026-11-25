@@ -9,6 +9,7 @@ job sbc_v2 has run and been aggregated), and checks the committed file, the
 aggregator and the task files on synthetic input.
 """
 
+import functools
 import importlib.util
 import json
 import pathlib
@@ -84,9 +85,15 @@ def test_sbc_v2_committed_file_is_what_the_script_runs():
         assert abs(np.mean(np.log(flux)) - (np.log(lo) + np.log(hi)) / 2) < 0.1  # log-uniform
 
 
+@functools.lru_cache(maxsize=1)
+def _quantities():
+    """The quantity names, read once: ``script()`` re-executes sbc_v2.py and sbc_numpyro.py and
+    ``spec()`` re-parses the YAML, and ``_rep`` is called about 10^4 times per test."""
+    return tuple(script().spec()["quantities"])
+
+
 def _rep(seed, regime, rank, healthy=True):
-    s = script()
-    q = s.spec()["quantities"]
+    q = _quantities()
     return {"seed": seed, "regime": regime, "truth": {}, "ranks": {k: rank(k) for k in q},
             "ess": {k: 1e3 if healthy else 10.0 for k in q}, "rhat": {k: 1.0 for k in q},
             "divergences": 0, "fit_converged": True}

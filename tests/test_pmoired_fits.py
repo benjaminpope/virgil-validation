@@ -90,7 +90,8 @@ def _observe(path, scene, stations, rng=None, mode="baseline"):
 # Both packages read the file with their own OIFITS reader: agreement
 # would fail if virgil misread uv signs, closure-phase orientation or
 # errors, so these also validate read_oifits against PMOIRED's reader.
-@pytest.mark.validates("virgil.fitting.fit", "virgil.oifits.read_oifits", roots=["pmoired"])
+@pytest.mark.slow
+@pytest.mark.validates("virgil.fitting.fit", "virgil.oifits.read_oifits", roots=["pmoired"], tier="B")
 @pytest.mark.parametrize("maker", SCENES, ids=lambda m: m.__name__)
 def test_noise_free_fits_reach_the_truth(tmp_path, maker):
     scene = maker()
@@ -119,7 +120,8 @@ def test_best_fits_agree_on_noisy_data(tmp_path, maker, mode):
     assert np.all(np.abs(diff) < 0.25), diff
 
 
-@pytest.mark.validates("virgil.inference.laplace_cov", roots=["pmoired"])
+@pytest.mark.slow
+@pytest.mark.validates("virgil.inference.laplace_cov", roots=["pmoired"], headline="max_abs_sigma_ratio_minus_1", tier="B")
 @pytest.mark.parametrize("maker", SCENES, ids=lambda m: m.__name__)
 def test_uncertainties_agree_without_closure_redundancy(tmp_path, maker):
     """Three telescopes: one closure phase per snapshot, nothing to

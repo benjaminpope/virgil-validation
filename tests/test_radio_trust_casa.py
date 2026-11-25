@@ -35,10 +35,12 @@ NPIX, CELL = 225, 25.0  # odd for virgil's clean; the sources sit on whole pixel
 
 
 def _virgil_casatools():
-    try:
-        import casatools
-    except Exception:  # noqa: BLE001
+    import importlib.util
+
+    if importlib.util.find_spec("casatools") is None:
         return None
+    import casatools
+
     return casatools.version_string()
 
 
@@ -95,7 +97,7 @@ def _reference_samples(npz, ddid_ids):
     return arr
 
 
-@pytest.mark.validates("virgil.radio.ComplexVisData.read_ms", roots=["casa"], tier="B")
+@pytest.mark.validates("virgil.radio.ComplexVisData.read_ms", roots=["casa"], tier="B", headline="max_rel_vis")
 @pytest.mark.parametrize("flagged", [False, True])
 def test_read_ms_equals_the_documented_reduction_of_the_raw_casatools_columns(flagged, ms):
     """Every (row, channel) sample of `read_ms` (ddid, antennas, time, channel, u, v, V, weight, frequency) equals the
@@ -127,6 +129,7 @@ def test_read_ms_equals_the_documented_reduction_of_the_raw_casatools_columns(fl
     a, b = np.asarray(got.weight)[order_g], ref["weight"][order_r]
     worst["weight"] = np.abs(a / b - 1).max()
     tag = "flagged" if flagged else "unflagged"
+    record("max_rel_vis", worst["vis"])
     for k, x in worst.items():
         record(f"max_rel_{k}_{tag}", x)
     record(f"n_samples_{tag}", len(ref["u"]))
@@ -140,7 +143,7 @@ def _close(a, b, rel):
     return abs(a - b) / abs(b) <= rel
 
 
-@pytest.mark.validates("virgil.radio_clean.clean", "virgil.radio.ComplexVisData.dirty_beam", roots=["casa"], tier="B")
+@pytest.mark.validates("virgil.radio_clean.clean", "virgil.radio_clean.fit_beam", "virgil.radio.ComplexVisData.dirty_beam", roots=["casa"], tier="B", headline="virgil_on_casa_psf_major_rel_diff")
 def test_fit_beam_and_the_lobe_only_reference_agree_with_the_beam_tclean_fits(tclean, data):
     """CASA's restoring beam (the Gaussian `tclean` fits to its PSF above psfcutoff 0.35) against virgil's `fit_beam` and the
     repository's lobe-only reference `crosscheck.alma_clean.fit_beam` (psfcutoff 0.35), each applied to CASA's own PSF and,
@@ -173,7 +176,7 @@ def test_fit_beam_and_the_lobe_only_reference_agree_with_the_beam_tclean_fits(tc
     assert np.abs(psf_virgil - tclean["psf"]).max() < 5e-3  # CASA grids; virgil sums exactly
 
 
-@pytest.mark.validates("virgil.radio_clean.clean", roots=["casa"], tier="B", kind="control")
+@pytest.mark.validates("virgil.radio_clean.clean", "virgil.radio_clean.fit_beam", roots=["casa"], tier="B", kind="control")
 def test_control_the_bounding_box_fit_of_the_lobe_misses_the_tclean_beam(tclean):
     """The beam tolerance separates the lobe-only fit from the earlier bounding-box fit (ledger C3): a Gaussian fitted to every
     pixel of the lobe's bounding box (including those below the cutoff) misses CASA's minor axis by more than 3 %, while the
@@ -200,7 +203,7 @@ def test_control_the_bounding_box_fit_of_the_lobe_misses_the_tclean_beam(tclean)
     assert miss > 0.03
 
 
-@pytest.mark.validates("virgil.radio_clean.clean", roots=["casa"], tier="B")
+@pytest.mark.validates("virgil.radio_clean.clean", "virgil.radio_clean.RadioCleanResult", roots=["casa"], tier="B", headline="max_model_difference_over_peak")
 def test_clean_reproduces_the_tclean_model_peak_flux_and_residual(tclean, data):
     """Hogbom CLEAN, natural weights, 500 iterations, gain 0.1, no mask, on the CASA-simulated set (two point sources of 10 and
     5 mJy on whole pixels): virgil's model equals tclean's to 1 % of the brighter source pixel by pixel, the total model flux

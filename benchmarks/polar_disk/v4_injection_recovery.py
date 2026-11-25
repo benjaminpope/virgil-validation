@@ -1,4 +1,4 @@
-"""V4: optical/IR injection-recovery of PolarDisk scenes (no reference code covers this).
+"""V4: optical/IR injection-recovery of MultipoleDisk scenes (no reference code covers this).
 
 Each injection draws a ring + gap + planet scene with POSITIVE azimuthal harmonics
 (Fejer-Riesz form, M = 1..3) from the prior below, observes it on synthetic NRM
@@ -44,7 +44,7 @@ import numpy as np
 import numpyro.distributions as dist
 
 from common import save
-from virgil import (Gap, GaussianRing, Harmonics, PointSource, PolarDisk, System, coverage, fit, laplace_cov,
+from virgil import (Gap, GaussianRing, Harmonics, MultipoleDisk, PointSource, System, coverage, fit, laplace_cov,
                     model_loglike)
 
 CONFIGS = {
@@ -60,8 +60,8 @@ SCALE = {"nrm": dict(r0=45.0, sigma=8.0, rgap=45.0, wgap=6.0, planet=70.0),
 
 def make_scene(par, w, n_r):
     """par: dict of scalars; w: complex latents (length M)."""
-    disk = PolarDisk(
-        Gap(GaussianRing(par["r0"], par["sigma"]), r0=par["rgap"], width=par["wgap"], depth=par["depth"]),
+    disk = MultipoleDisk(
+        Gap(GaussianRing(par["r0"], par["sigma"]), radius=par["rgap"], sigma=par["wgap"], depth=par["depth"]),
         harmonics=Harmonics(w=tuple(complex(x) for x in w)), inc=par["inc"], pa=par["pa"], n_r=n_r, flux=par["fdisk"])
     return System(star=PointSource(1.0), disk=disk,
                   planet=PointSource(par["fplanet"], dra=par["pdra"], ddec=par["pddec"]))
@@ -83,10 +83,10 @@ def draw_truth(rng, instrument, degree):
 def priors(instrument, degree):
     s = SCALE[instrument]
     p = {
-        "disk.profile.base.r0": dist.LogUniform(0.3 * s["r0"], 3 * s["r0"]),
+        "disk.profile.base.radius": dist.LogUniform(0.3 * s["r0"], 3 * s["r0"]),
         "disk.profile.base.sigma": dist.LogUniform(0.2 * s["sigma"], 4 * s["sigma"]),
-        "disk.profile.r0": dist.LogUniform(0.3 * s["r0"], 3 * s["r0"]),
-        "disk.profile.width": dist.LogUniform(0.2 * s["wgap"], 4 * s["wgap"]),
+        "disk.profile.radius": dist.LogUniform(0.3 * s["r0"], 3 * s["r0"]),
+        "disk.profile.sigma": dist.LogUniform(0.2 * s["wgap"], 4 * s["wgap"]),
         "disk.profile.depth": dist.Uniform(0.0, 1.0),
         "disk.inc": dist.Uniform(5.0, 80.0), "disk.pa": dist.Uniform(-10.0, 190.0),
         "disk.flux": dist.LogUniform(0.05, 5.0),
@@ -101,8 +101,8 @@ def priors(instrument, degree):
     return p
 
 
-SCALARS = {"disk.profile.base.r0": "r0", "disk.profile.base.sigma": "sigma", "disk.profile.r0": "rgap",
-           "disk.profile.width": "wgap", "disk.profile.depth": "depth", "disk.inc": "inc", "disk.pa": "pa",
+SCALARS = {"disk.profile.base.radius": "r0", "disk.profile.base.sigma": "sigma", "disk.profile.radius": "rgap",
+           "disk.profile.sigma": "wgap", "disk.profile.depth": "depth", "disk.inc": "inc", "disk.pa": "pa",
            "disk.flux": "fdisk", "planet.flux": "fplanet", "planet.dra": "pdra", "planet.ddec": "pddec"}
 
 
