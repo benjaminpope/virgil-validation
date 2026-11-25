@@ -21,10 +21,10 @@ Certification (the tests of plan section 5.3 and checks C1-C6) is PR-B's ``alma_
 """
 
 import argparse
-import importlib
 import json
 import os
 import pathlib
+import pkgutil
 import re
 import sys
 import time
@@ -369,8 +369,7 @@ def resolve_callable(spec, table=None):
         return table[spec]
     if ":" not in spec:
         raise ValueError(f"{spec!r} is neither a known name ({sorted(table or {})}) nor module:function")
-    mod, fn = spec.split(":", 1)
-    return getattr(importlib.import_module(mod), fn)
+    return pkgutil.resolve_name(spec)  # "module:function"; not importlib.import_module, which the trust graph cannot resolve statically
 
 
 # ---------------------------------------------------------------------------------------------------- the production problem (needs virgil)

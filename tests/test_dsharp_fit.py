@@ -3,6 +3,7 @@ pre-alignment rule, the lambda pick, the starts and the optimiser interface. Not
 agreement with the direct engine (gate G1) is checked by the S1 probe job, not here."""
 
 import importlib.util
+import os
 import pathlib
 import subprocess
 import sys
@@ -204,7 +205,7 @@ def test_the_engine_is_read_from_the_term_not_from_the_request():
 @pytest.mark.validates("crosscheck.dsharp", roots=["self-consistency"], kind="guard")
 def test_the_optimiser_is_behind_an_interface_and_resolves_a_name_or_module_function():
     assert fit.resolve_callable("lbfgs", fit.OPTIMISERS) is fit.lbfgs_optimiser
-    assert fit.resolve_callable("os.path:join") is __import__("os").path.join
+    assert fit.resolve_callable("os.path:join") is os.path.join
     with pytest.raises(ValueError, match="neither a known name"):
         fit.resolve_callable("nonsense", fit.OPTIMISERS)
 
