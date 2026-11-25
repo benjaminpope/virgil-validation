@@ -194,15 +194,20 @@ def compare_fits(evaluator, ref, other, *, theta_ref=None, theta_other=None):
     """C3/C4 against the converged ``ref``: beam-convolved image within 1e-3 of peak, ``J`` within the decrement threshold, flux within 0.1%, gains within 1e-3, offsets within 0.5 mas.
     Returns ``dict(passes, ...)`` with the measured numbers."""
     obj = evaluator.obj
-    if theta_ref is not None:
-        obj.set_theta(theta_ref)
-    Jr = obj.value_grad(np.asarray(ref))[0]
-    if theta_other is not None:
-        obj.set_theta(theta_other)
-    Jo = obj.value_grad(np.asarray(other))[0]
+    theta0 = np.array(obj.theta, float)  # restored on return: a later ``evaluate`` without ``theta`` must see the nuisances it had
+    try:
+        if theta_ref is not None:
+            obj.set_theta(theta_ref)
+        Jr = obj.value_grad(np.asarray(ref))[0]
+        if theta_other is not None:
+            obj.set_theta(theta_other)
+        Jo = obj.value_grad(np.asarray(other))[0]
+    finally:
+        if theta0.size:
+            obj.set_theta(theta0)
     ir, io = evaluator._image(ref), evaluator._image(other)
     out = dict(image=float(np.max(np.abs(io - ir)) / np.max(np.abs(ir))), dJ=float(Jo - Jr), flux=float(abs(np.sum(other) / np.sum(ref) - 1.0)))
-    ok = out["image"] < C3["image"] and out["dJ"] < decrement_threshold(obj.weight) and out["flux"] < C3["flux"]
+    ok = out["image"] < C3["image"] and abs(out["dJ"]) < decrement_threshold(obj.weight) and out["flux"] < C3["flux"]
     if theta_ref is not None and theta_other is not None:
         layout = getattr(obj, "layout", [("gain", 0, len(theta_ref))])
         for name, a, b in layout:

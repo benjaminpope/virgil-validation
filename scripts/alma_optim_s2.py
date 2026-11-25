@@ -218,33 +218,48 @@ def cmd_run(args):
     say(f"{name}: {res.reason} after {res.wall:.0f} s, {res.geq} gradient-equivalents, {res.steps} steps; wrote {d}")
 
 
+def reference_stem(tier, mult):
+    return f"reference_{tier}_w{mult}"
+
+
 def cmd_reference(args):
+    """The reference of each weight (``reference_<tier>_w<mult>.npz``, with the weight and, for tier B, the nuisances): two families at 3x the budget, polished, kept only if they agree.
+    Tier A (default) holds the nuisances at S1's; tier B (``--tier B``) fits them jointly, so tier-B runs are scored against a tier-B optimum, never tier A's."""
     import virgil_bridge.alma_certify as ac
     import virgil_bridge.alma_optim as ao
 
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
-    args.tier, args.start = "A", "flat"
-    obj, flux, _ = load(args)
-    beam = beam_of(obj.prob.npix, obj.prob.pixel_mas, args.beam_mas)
-    ev = ac.Evaluator(obj, beam=beam)
-    polished = []
-    for m in args.methods.split(","):  # two families: one quasi-Newton, one Newton
-        res = ao.run(m, obj, obj.flat(), budget_s=3 * args.budget, out=out / f"reference_{m}", snap_every=args.snap_every, **tuned(args, m))
-        f, k = ao.polish(obj, res.f)
-        polished.append((m, f))
-        say(f"reference {m}: {res.reason} {res.wall:.0f} s, polished in {k} Newton rounds")
-    (ma, fa), (mb, fb) = polished
-    agree, dJ, dist = ac.reference_agreement(ev, fa, fb)
-    rec = dict(methods=[ma, mb], agree=agree, dJ=dJ, image_distance=dist, status="ok" if agree else "failed", provenance=ac.provenance())
-    if agree:
-        ev.set_reference(fa)
-        rec["reference_record"] = ev.evaluate(fa)
-        np.savez(out / "reference.npz", f=fa)
-    (out / "reference.json").write_text(json.dumps(jsonable(rec), indent=1))
-    say(f"reference: agree {agree} (dJ {dJ:.3g}, image {dist:.3g})")
-    if not agree:
-        raise SystemExit("the reference methods disagree: the stage has failed and nothing is selected (plan §4.1)")
+    args.start = "flat"
+    failed = []
+    for mult in ((args.weight_mult,) if args.weight_mult else WEIGHT_MULTS):
+        args.weight_mult = mult
+        obj, flux, _ = load(args)
+        beam = beam_of(obj.prob.npix, obj.prob.pixel_mas, args.beam_mas)
+        ev = ac.Evaluator(obj, beam=beam)
+        polished = []
+        for m in args.methods.split(","):  # two families: one quasi-Newton, one Newton
+            res = ao.run(m, obj, obj.flat(), budget_s=3 * args.budget, out=out / f"{reference_stem(args.tier, mult)}_{m}", snap_every=args.snap_every, **tuned(args, m))
+            obj.set_theta(res.theta)
+            f, k = ao.polish(obj, res.f)
+            polished.append((m, f, np.array(res.theta, float)))
+            say(f"reference {args.tier} w{mult} {m}: {res.reason} {res.wall:.0f} s, polished in {k} Newton rounds")
+        (ma, fa, ta), (mb, fb, tb) = polished
+        obj.set_theta(ta)
+        ev.set_reference(fb, tb)
+        agree, dJ, dist = ac.reference_agreement(ev, fa, fb)
+        rec = dict(methods=[ma, mb], tier=args.tier, weight_mult=mult, w=obj.weight, agree=agree, dJ=dJ, image_distance=dist, status="ok" if agree else "failed", provenance=ac.provenance())
+        if agree:
+            obj.set_theta(ta)
+            ev.set_reference(fa, ta)
+            rec["reference_record"] = ev.evaluate(fa)
+            np.savez(out / f"{reference_stem(args.tier, mult)}.npz", f=fa, theta=ta, w=obj.weight)
+        else:
+            failed.append(mult)
+        (out / f"{reference_stem(args.tier, mult)}.json").write_text(json.dumps(jsonable(rec), indent=1))
+        say(f"reference {args.tier} w{mult}: agree {agree} (dJ {dJ:.3g}, image {dist:.3g})")
+    if failed:
+        raise SystemExit(f"the reference methods disagree at weight multiplier(s) {failed}: the stage has failed and nothing is selected (plan section 4.1)")
 
 
 def cmd_score(args):
@@ -255,9 +270,12 @@ def cmd_score(args):
     args.tier, args.weight_mult = meta["tier"], meta["weight_mult"]
     obj, _, _ = load(args)
     ev = ac.Evaluator(obj, beam=beam_of(obj.prob.npix, obj.prob.pixel_mas, args.beam_mas))
-    ref = pathlib.Path(args.out) / "reference.npz"
-    if ref.exists() and meta["tier"] == "A":
-        ev.set_reference(np.load(ref)["f"])
+    ref = pathlib.Path(args.out) / f"{reference_stem(meta['tier'], meta['weight_mult'])}.npz"
+    if ref.exists():  # the reference of this tier and weight only: a reference of another weight is another objective
+        z = np.load(ref)
+        if abs(float(z["w"]) / obj.weight - 1.0) > 1e-9:
+            raise SystemExit(f"{ref.name} was made at w = {float(z['w']):g}, this run has w = {obj.weight:g}: refusing to score against it")
+        ev.set_reference(z["f"], z["theta"] if z["theta"].size else None)
     recs = ac.score_snapshots(ev, str(d), log=say)
     series = ac.certify_series(recs)
     result = json.loads((d / "result.json").read_text()) if (d / "result.json").exists() else {}
@@ -268,6 +286,13 @@ def cmd_score(args):
     say(f"{args.run}: certified {row['certified']} (t {series['t']}, {series['geq']} grad-eq)")
 
 
+def matches_reference(image_vs_reference, final):
+    """The answer matches the reference: image within 1e-3 of peak and ``|J - J*|`` below the decrement threshold. A run with no reference does not match (so it cannot win G2)."""
+    if image_vs_reference is None or not final or final.get("J_minus_Jstar") is None:
+        return False
+    return bool(image_vs_reference < 1e-3 and abs(final["J_minus_Jstar"]) < final.get("decrement_threshold", 0.0))
+
+
 def g2_select(rows, tol=0.2):
     """Gate G2 on the tier-B rows (dicts with ``method``, ``weight_mult``, ``certified``, ``t``, ``matches_reference``): the winner has the lowest median time to certification over the weights
     among methods certified at both with an answer matching the reference; within ``tol`` of the best prefer a method already in virgil, then the one with less new code. ``None`` if nobody."""
@@ -276,8 +301,12 @@ def g2_select(rows, tol=0.2):
         by.setdefault(r["method"], []).append(r)
     cand = {}
     for m, rs in by.items():
-        if {r["weight_mult"] for r in rs if r["certified"] and r.get("matches_reference", True)} >= set(WEIGHT_MULTS):
-            cand[m] = statistics.median(r["t"] for r in rs)
+        best = {}  # one eligible row per weight: the earliest certified one that matches the reference (a slower duplicate or an uncertified row cannot enter the median)
+        for r in rs:
+            if r["certified"] and r.get("matches_reference", False) and r["t"] is not None and (r["weight_mult"] not in best or r["t"] < best[r["weight_mult"]]):
+                best[r["weight_mult"]] = r["t"]
+        if set(best) >= set(WEIGHT_MULTS):
+            cand[m] = statistics.median(best.values())
     if not cand:
         return None
     best = min(cand.values())
@@ -294,7 +323,7 @@ def cmd_summary(args):
     for d in sorted(p for p in out.iterdir() if p.is_dir() and (p / "scores.json").exists()):
         s, r = json.loads((d / "scores.json").read_text()), json.loads((d / "result.json").read_text())
         fin = s["final"] or {}
-        ok_ref = (s["image_vs_reference"] is None or s["image_vs_reference"] < 1e-3) and (fin.get("J_minus_Jstar") is None or fin["J_minus_Jstar"] < fin.get("decrement_threshold", np.inf))
+        ok_ref = matches_reference(s["image_vs_reference"], fin)
         lines.append(f"| {d.name} | {s['certified']} | {s['series']['t']} | {s['series']['geq']} | {fin.get('J_minus_Jstar')} | {s['image_vs_reference']} | {r['steps']} | {r['reason']} | {r['peak_gpu_gb']:.1f} |")
         if r["tier"] == "B":
             tier_b.append(dict(method=r["method"], weight_mult=r["weight_mult"], certified=s["certified"], t=s["series"]["t"], matches_reference=bool(ok_ref)))
@@ -314,7 +343,7 @@ def main(argv=None):
     p.add_argument("--w0", type=float, default=W0)
     p.add_argument("--method", choices=METHODS)
     p.add_argument("--methods", default="lbfgsb_newton,newton_cg", help="the reference's two families (reference stage)")
-    p.add_argument("--weight-mult", type=int, choices=WEIGHT_MULTS, default=1)
+    p.add_argument("--weight-mult", type=int, choices=WEIGHT_MULTS, default=None, help="run/score: the weight multiplier (default 1); reference: both weights unless given")
     p.add_argument("--tier", choices=("A", "B"), default="A")
     p.add_argument("--start", choices=("flat", "gaussian"), default="flat")
     p.add_argument("--budget", type=float, default=BUDGET_S)
@@ -327,6 +356,8 @@ def main(argv=None):
     p.add_argument("--name", default=None)
     p.add_argument("--run", default=None, help="score: the run directory name")
     args = p.parse_args(argv)
+    if args.weight_mult is None and args.stage != "reference":
+        args.weight_mult = 1
     if args.stage in ("tune", "reference", "run", "score") and not args.data:
         p.error(f"{args.stage} needs --data")
     if args.stage == "run" and not args.method:

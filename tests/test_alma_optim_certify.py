@@ -158,12 +158,53 @@ def test_reference_restarts_and_perturbation_use_the_c3_tolerances(problem):
     assert start.sum() == pytest.approx(0.25) and start.min() > 0 and start.argmax() in (7 * 16 + 7, 7 * 16 + 8, 8 * 16 + 7, 8 * 16 + 8)
 
 
+def test_a_two_phase_method_alternates_with_the_nuisance_step_in_a_joint_run(monkeypatch):
+    calls = []
+    real = ao.newton_nuisance
+    monkeypatch.setattr(ao, "newton_nuisance", lambda *a, **k: (calls.append(1), real(*a, **k))[1])
+    obj, _ = toy(seed=7, gain=1.0, gain_true=1.15)
+    ao.run("lbfgsb_newton", obj, obj.flat(), budget_s=4.0, joint_rounds=10)
+    assert len(calls) >= 5, len(calls)  # once per slice, not once at the end
+
+
+def test_the_c3_flux_check_is_two_sided_and_restores_the_nuisances(problem):
+    obj, _, f_ref, ev = problem
+    below = ac.compare_fits(ev, 1.0005 * f_ref, f_ref)  # the 'restart' sits at a different J, by more than the threshold, whichever side
+    assert abs(below["dJ"]) > ac.decrement_threshold(obj.weight) and not below["passes"]
+    lower = ac.compare_fits(ev, f_ref, 1.0005 * f_ref)
+    assert not lower["passes"]
+    jobj, _ = toy(seed=7, gain=1.0, gain_true=1.15)
+    jev = ac.Evaluator(jobj)
+    jobj.set_theta(np.array([1.3]))
+    ac.compare_fits(jev, jobj.flat(), jobj.flat(), theta_ref=np.array([1.0]), theta_other=np.array([1.1]))
+    assert jobj.theta[0] == pytest.approx(1.3)
+
+
+def test_g2_needs_a_reference_and_ignores_uncertified_duplicates():
+    import importlib.util, pathlib
+
+    spec = importlib.util.spec_from_file_location("alma_optim_s2", pathlib.Path(__file__).resolve().parents[1] / "scripts" / "alma_optim_s2.py")
+    drv = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(drv)
+    assert not drv.matches_reference(None, {"J_minus_Jstar": 0.0, "decrement_threshold": 1.0})  # no reference: no match
+    assert not drv.matches_reference(1e-5, {"J_minus_Jstar": -1.0, "decrement_threshold": 1e-3})  # a much lower J is as wrong as a much higher one
+    assert drv.matches_reference(1e-5, {"J_minus_Jstar": -1e-6, "decrement_threshold": 1e-3})
+    row = lambda m, w, c, t, ok=True: dict(method=m, weight_mult=w, certified=c, t=t, matches_reference=ok)  # noqa: E731
+    rows = [row("a", 1, True, 100.0), row("a", 30, True, 200.0), row("a", 30, False, None), row("a", 30, True, 900.0),  # an uncertified and a slower duplicate
+            row("b", 1, True, 50.0), row("b", 30, True, 60.0, ok=False)]  # b does not match at 30
+    out = drv.g2_select(rows)
+    assert out["winner"] == "a" and out["median_t"] == {"a": 150.0}
+    assert drv.g2_select([row("b", 1, True, 5.0, ok=False), row("b", 30, True, 5.0, ok=False)]) is None
+
+
 def test_the_joint_objective_fits_its_gain_and_certifies_the_nuisance_block():
     obj, _ = toy(seed=7, gain=1.0, gain_true=1.15)
     res = ao.run("newton_cg", obj, obj.flat(), budget_s=10.0, joint_rounds=40)
     ev = ac.Evaluator(obj)
     rec = ev.evaluate(res.f, res.theta)
-    assert res.theta[0] > 1.05  # moved towards the true 1.15 (the entropy shrinks it a little)
+    # One gain against a free image flux is degenerate (the entropy pulls the flux down and the gain runs away, theta ~ 3 here): this test is about the nuisance block's
+    # decrement at the joint optimum and the shape of the C3 starts, not about recovering the true gain, which IM Lup fixes with ``ref_obs``.
+    assert res.theta[0] != 1.0
     assert rec["n_nuisance"] == 1 and rec["nuisance_decrement"] < rec["decrement_threshold"], rec
     starts = ac.nuisance_starts(obj, res.theta, gain_frac=0.05)
     assert starts[0][0] == pytest.approx(res.theta[0] * 1.05) and starts[1][0] == pytest.approx(res.theta[0] * 0.95)
@@ -215,6 +256,7 @@ def virgil_chain(tmp_path_factory):
     return prob, ac.VirgilObjective(prob, w)
 
 
+@pytest.mark.validates("virgil.imaging.MaxEntropy", roots=["self-consistency"], kind="guard")
 def test_the_virgil_objective_is_chi2_plus_maxentropy_up_to_a_constant(virgil_chain):
     import jax.numpy as jnp
     from virgil.imaging import MaxEntropy
@@ -241,6 +283,7 @@ def test_the_virgil_data_term_is_exactly_quadratic(virgil_chain):
     assert d1 - d0 == pytest.approx(g0 @ v + 0.5 * v @ obj.hvp(v), rel=1e-7, abs=1e-8)
 
 
+@pytest.mark.validates("virgil.fitting.kkt_report", roots=["self-consistency"], kind="guard")
 def test_a_run_certifies_and_the_rebuilt_fit_result_gives_the_same_kkt_w(virgil_chain, tmp_path):
     prob, obj = virgil_chain
     res = ao.run("newton_cg", obj, obj.flat(), budget_s=60.0, out=tmp_path, snap_every=2.0, cg_tol=1e-4)

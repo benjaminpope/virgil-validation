@@ -426,7 +426,9 @@ def newton_cg(obj, meter, f0, cg_tol=1e-3, **_):
 
 def lbfgsb_newton(obj, meter, f0, maxcor=100, phase1=0.5, cg_tol=1e-3, **_):
     """L-BFGS-B for the fraction ``phase1`` of the budget, then Newton-CG polish in flux coordinates (the first draft's choice)."""
-    meter.deadline = phase1 * meter.budget_s
+    outer = meter.deadline  # a joint slice's deadline, else None (the whole budget): phase 1 takes ``phase1`` of what is left of it
+    start = meter.elapsed()
+    meter.deadline = start + phase1 * ((meter.budget_s if outer is None else min(outer, meter.budget_s)) - start)
     try:
         lbfgsb(obj, meter, f0, maxcor=maxcor)
     except Budget:
@@ -434,7 +436,7 @@ def lbfgsb_newton(obj, meter, f0, maxcor=100, phase1=0.5, cg_tol=1e-3, **_):
     except Stalled:
         pass
     finally:
-        meter.deadline = None
+        meter.deadline = outer
     f = meter.last if meter.last is not None else np.array(f0, float)
     _newton_cg_loop(_CountedHvp(obj, meter), meter, f, cg_tol=cg_tol)
 
