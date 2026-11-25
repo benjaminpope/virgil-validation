@@ -1,0 +1,350 @@
+{
+ "case": "I-sim-96",
+ "comparison": "imaging",
+ "code": "virgil",
+ "config": "matched",
+ "threads": 1,
+ "size": "full",
+ "status": "ok",
+ "t_process": 0.9501688960008323,
+ "t_calib": 0.26542003799113445,
+ "t_import": 3.9821192370000063,
+ "t_load": 0.9153594429953955,
+ "t_init": null,
+ "t_cold": 5.315035538995289,
+ "t_warm": [
+  0.25395024300087243,
+  0.24754168599611148,
+  0.25049071200191975,
+  0.2515646120009478,
+  0.24856778599496465
+ ],
+ "peak_footprint_mb": 1382.396,
+ "peak_rss_mb": 1382.396,
+ "baseline_mb": null,
+ "cpu_ratio": 1.0164874571656883,
+ "flags": [],
+ "n_data": 312,
+ "n_param": 9216,
+ "iterations": {
+  "steps_by_budget": [
+   25,
+   50,
+   100,
+   200,
+   400,
+   800,
+   1600,
+   3200
+  ]
+ },
+ "accuracy": {
+  "ladder": [
+   {
+    "budget": 25,
+    "t_warm": [
+     0.25395024300087243,
+     0.24754168599611148,
+     0.25049071200191975,
+     0.2515646120009478,
+     0.24856778599496465
+    ],
+    "steps": 25,
+    "converged": false,
+    "stop": "limit",
+    "score": {
+     "J": 267.8872941097487,
+     "half_chi2_amp": 189.9459150031181,
+     "half_chi2_cp": 43.145320928637304,
+     "tv2": 4.639474423732437e-05,
+     "flux": 0.9999999999999999,
+     "n_amp": 234,
+     "n_cp": 78,
+     "ncc_registered": 0.9233626585633087,
+     "ncc_shift_rc": [
+      3,
+      -3
+     ],
+     "ncc_unregistered": 0.7180476306774959,
+     "rms_rel_beam": 0.08302559736850545,
+     "beam_mas": 1.5448696219530984
+    }
+   },
+   {
+    "budget": 50,
+    "t_warm": [
+     0.4759608190070139,
+     0.4753296050039353,
+     0.4764241850061808,
+     0.47541563800768927,
+     0.47449808300007135
+    ],
+    "steps": 50,
+    "converged": false,
+    "stop": "limit",
+    "score": {
+     "J": 145.68931617736803,
+     "half_chi2_amp": 93.69185039636687,
+     "half_chi2_cp": 29.216606947661614,
+     "tv2": 3.0374478444452714e-05,
+     "flux": 0.9999999999999998,
+     "n_amp": 234,
+     "n_cp": 78,
+     "ncc_registered": 0.8901755730801051,
+     "ncc_shift_rc": [
+      3,
+      -3
+     ],
+     "ncc_unregistered": 0.6499381970122968,
+     "rms_rel_beam": 0.09795396824031789,
+     "beam_mas": 1.5448696219530984
+    }
+   },
+   {
+    "budget": 100,
+    "t_warm": [
+     0.9245602779992623,
+     0.9233908169990173,
+     0.9186105190019589,
+     0.9182714890048373,
+     0.9217818249890115
+    ],
+    "steps": 100,
+    "converged": false,
+    "stop": "limit",
+    "score": {
+     "J": 133.93000238057027,
+     "half_chi2_amp": 84.08735861675257,
+     "half_chi2_cp": 28.111425694133633,
+     "tv2": 2.8974957426245426e-05,
+     "flux": 0.9999999999999999,
+     "n_amp": 234,
+     "n_cp": 78,
+     "ncc_registered": 0.8699685645099816,
+     "ncc_shift_rc": [
+      3,
+      -3
+     ],
+     "ncc_unregistered": 0.6253181368889662,
+     "rms_rel_beam": 0.10234555487922321,
+     "beam_mas": 1.5448696219530984
+    }
+   },
+   {
+    "budget": 200,
+    "t_warm": [
+     1.8227864990039961,
+     1.822589887000504,
+     1.8236043550132308,
+     1.8216651180118788,
+     1.8233048190013506
+    ],
+    "steps": 200,
+    "converged": false,
+    "stop": "limit",
+    "score": {
+     "J": 132.7485869126234,
+     "half_chi2_amp": 83.32038398513117,
+     "half_chi2_cp": 27.89930558715494,
+     "tv2": 2.8705196453783058e-05,
+     "flux": 1.0,
+     "n_amp": 234,
+     "n_cp": 78,
+     "ncc_registered": 0.8637483922259317,
+     "ncc_shift_rc": [
+      3,
+      -3
+     ],
+     "ncc_unregistered": 0.6178812348426849,
+     "rms_rel_beam": 0.10357485767418796,
+     "beam_mas": 1.5448696219530984
+    }
+   },
+   {
+    "budget": 400,
+    "t_warm": [
+     3.617188796008122,
+     3.625119863994769,
+     3.607896647998132,
+     3.6220152739988407,
+     3.6193736790010007
+    ],
+    "steps": 400,
+    "converged": false,
+    "stop": "limit",
+    "score": {
+     "J": 131.97177954470018,
+     "half_chi2_amp": 83.0463424019135,
+     "half_chi2_cp": 27.473024525947263,
+     "tv2": 2.8603216822452534e-05,
+     "flux": 1.0000000000000002,
+     "n_amp": 234,
+     "n_cp": 78,
+     "ncc_registered": 0.8546604862075676,
+     "ncc_shift_rc": [
+      3,
+      -3
+     ],
+     "ncc_unregistered": 0.6066155619607806,
+     "rms_rel_beam": 0.10534715809770431,
+     "beam_mas": 1.5448696219530984
+    }
+   },
+   {
+    "budget": 800,
+    "t_warm": [
+     7.198321760995896,
+     7.170484626010875,
+     7.190705180008081,
+     7.203173513989896,
+     7.192451151000569
+    ],
+    "steps": 800,
+    "converged": false,
+    "stop": "limit",
+    "score": {
+     "J": 131.4773779182232,
+     "half_chi2_amp": 82.75885424253528,
+     "half_chi2_cp": 27.295520730861185,
+     "tv2": 2.856400392643565e-05,
+     "flux": 1.0,
+     "n_amp": 234,
+     "n_cp": 78,
+     "ncc_registered": 0.8490122769340175,
+     "ncc_shift_rc": [
+      3,
+      -3
+     ],
+     "ncc_unregistered": 0.5977690354816365,
+     "rms_rel_beam": 0.10670343345646408,
+     "beam_mas": 1.5448696219530984
+    }
+   },
+   {
+    "budget": 1600,
+    "t_warm": [
+     14.368487491999986,
+     14.340945122006815,
+     14.351925308001228,
+     14.33089623900014,
+     14.359101470006863
+    ],
+    "steps": 1600,
+    "converged": false,
+    "stop": "limit",
+    "score": {
+     "J": 131.2322510673263,
+     "half_chi2_amp": 82.5978192014539,
+     "half_chi2_cp": 27.21241603353346,
+     "tv2": 2.8562687776451926e-05,
+     "flux": 0.9999999999999999,
+     "n_amp": 234,
+     "n_cp": 78,
+     "ncc_registered": 0.8489038787679408,
+     "ncc_shift_rc": [
+      3,
+      -3
+     ],
+     "ncc_unregistered": 0.5958776678484198,
+     "rms_rel_beam": 0.10701927262453696,
+     "beam_mas": 1.5448696219530984
+    }
+   },
+   {
+    "budget": 3200,
+    "t_warm": [
+     28.655466628013528,
+     28.675198621000163,
+     28.575194490986178,
+     28.620046726005967,
+     28.6819816060015
+    ],
+    "steps": 3200,
+    "converged": false,
+    "stop": "limit",
+    "score": {
+     "J": 131.1167063144816,
+     "half_chi2_amp": 82.52263101004023,
+     "half_chi2_cp": 27.174684425751128,
+     "tv2": 2.855918783825368e-05,
+     "flux": 1.0,
+     "n_amp": 234,
+     "n_cp": 78,
+     "ncc_registered": 0.8391608620737625,
+     "ncc_shift_rc": [
+      3,
+      -3
+     ],
+     "ncc_unregistered": 0.5821957099736785,
+     "rms_rel_beam": 0.10902870985842189,
+     "beam_mas": 1.5448696219530984
+    }
+   }
+  ],
+  "ladder_J": [
+   267.8872941097487,
+   145.68931617736803,
+   133.93000238057027,
+   132.7485869126234,
+   131.97177954470018,
+   131.4773779182232,
+   131.2322510673263,
+   131.1167063144816
+  ]
+ },
+ "settings": {
+  "case": "I-sim-96",
+  "task": "ladder",
+  "reps": 5,
+  "size": "full",
+  "budgets": [
+   25,
+   50,
+   100,
+   200,
+   400,
+   800,
+   1600,
+   3200
+  ],
+  "gtol": 0.0,
+  "method": "default",
+  "run": "r2",
+  "jax_cache": "cold",
+  "device": "gpu",
+  "gpu": "NVIDIA A100-SXM4-80GB"
+ },
+ "provenance": {
+  "vv_commit": null,
+  "vv_dirty": false,
+  "virgil_pin": "09b268521072a83f73bc0a77defa6485db270c7b",
+  "versions": {
+   "virgil-astro": null,
+   "jax": "0.12.0.1",
+   "jaxlib": "0.12.0.1",
+   "numpyro": "0.22.0",
+   "pmoired": "26.10.1",
+   "ehtim": null,
+   "numpy": "2.5.4",
+   "scipy": "1.18.1",
+   "arviz": null,
+   "astropy": "8.0.2"
+  },
+  "python": "3.12.7",
+  "macos": "",
+  "chip": "AMD EPYC 7543 32-Core Processor",
+  "cpu_count": 64,
+  "thread_env": {
+   "OMP_NUM_THREADS": "1",
+   "OPENBLAS_NUM_THREADS": "1",
+   "VECLIB_MAXIMUM_THREADS": "1",
+   "MKL_NUM_THREADS": "1",
+   "NUMEXPR_NUM_THREADS": "1",
+   "XLA_FLAGS": "--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1 --xla_cpu_parallel_codegen_split_count=1 --xla_cpu_use_xnnpack=false --xla_cpu_enable_concurrency_optimized_scheduler=false",
+   "JAX_PLATFORMS": "cuda",
+   "JULIA_NUM_THREADS": "1"
+  },
+  "data_manifest_sha256": "9ff0c4e5432d399dab1b2db62ae15a4b3066af304147876be59a21020f540205"
+ },
+ "language": "python"
+}

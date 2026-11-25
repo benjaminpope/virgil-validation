@@ -1,0 +1,128 @@
+{
+ "case": "B-sim-ud-T2",
+ "comparison": "binary",
+ "code": "pmoired",
+ "config": "matched",
+ "threads": 1,
+ "size": "full",
+ "status": "ok",
+ "t_process": 0.3010551249980926,
+ "t_calib": 0.10859691700898111,
+ "t_import": 3.32781700004125,
+ "t_load": 0.021365957974921912,
+ "t_init": null,
+ "t_cold": 0.019361874961759895,
+ "t_warm": [
+  0.01612545904936269,
+  0.015932499954942614,
+  0.0164130000048317,
+  0.017355707997921854,
+  0.015793500002473593
+ ],
+ "peak_footprint_mb": 168.313456,
+ "peak_rss_mb": 198.524928,
+ "baseline_mb": null,
+ "cpu_ratio": 0.8055555555555556,
+ "flags": [],
+ "n_data": 300,
+ "n_param": 4,
+ "iterations": {
+  "nfev": 21,
+  "chi2_red_own": 0.9245896052944582,
+  "ndof": 298,
+  "t_fit_cold": 0.0193352090427652,
+  "t_fit_warm": [
+   0.01612545904936269,
+   0.015932499954942614,
+   0.0164130000048317,
+   0.017355707997921854,
+   0.015793500002473593
+  ]
+ },
+ "accuracy": {
+  "best": {
+   "dra": 5.989231165261042,
+   "ddec": -3.990990020614635,
+   "flux": 0.10150587989090921,
+   "ud": 0.9870133216542982
+  },
+  "sigma": {
+   "dra": 0.012488801116828823,
+   "ddec": 0.014125418861673886,
+   "flux": 0.0010161702950741726,
+   "ud": 0.013717621080106674
+  },
+  "reference": {
+   "dra": 6.0,
+   "ddec": -4.0,
+   "flux": 0.1,
+   "ud": 1.0
+  },
+  "dev_from_reference_sigma": {
+   "dra": -0.8622793043318207,
+   "ddec": 0.6378557318262332,
+   "flux": 1.4819168580393225,
+   "ud": -0.9467150513827128
+  },
+  "chi2_neutral": 279.2260607989945,
+  "chi2_neutral_v2": 167.395124041008,
+  "chi2_neutral_cp": 111.83093675798652,
+  "chi2_neutral_red": 0.9433312864830896,
+  "chi2_neutral_at_reference": 282.2011170977132,
+  "n_v2": 180,
+  "n_cp": 120
+ },
+ "settings": {
+  "ftol": 1e-05,
+  "epsfcn": 1e-06,
+  "maxfev": 10000,
+  "start": {
+   "dra": 6.3,
+   "ddec": -4.3,
+   "flux": 0.13,
+   "ud": 1.3
+  },
+  "auto": false,
+  "autoPrior": true,
+  "code": "pmoired",
+  "case": "B-sim-ud",
+  "config": "matched",
+  "size": "full",
+  "task": "T2",
+  "case_id": "B-sim-ud"
+ },
+ "provenance": {
+  "vv_commit": "09de765eebb41a801f3887013ed227ddffc31ffc",
+  "vv_dirty": false,
+  "virgil_pin": "c2be8278a4d6549282b3cf199852101929df0462",
+  "versions": {
+   "virgil-astro": "0.4.1",
+   "jax": "0.12.0.1",
+   "jaxlib": "0.12.0.1",
+   "numpyro": "0.22.0",
+   "pmoired": "26.10.1",
+   "ehtim": null,
+   "numpy": "2.5.5",
+   "scipy": "1.18.1",
+   "arviz": "1.3.0",
+   "astropy": "8.0.3"
+  },
+  "python": "3.12.12",
+  "macos": "26.7.2",
+  "chip": "Apple M4",
+  "cpu_count": 10,
+  "thread_env": {
+   "OMP_NUM_THREADS": "1",
+   "OPENBLAS_NUM_THREADS": "1",
+   "VECLIB_MAXIMUM_THREADS": "1",
+   "MKL_NUM_THREADS": "1",
+   "NUMEXPR_NUM_THREADS": "1",
+   "XLA_FLAGS": "--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1",
+   "JAX_PLATFORMS": "cpu",
+   "JULIA_NUM_THREADS": "1"
+  },
+  "data_manifest_sha256": "b3051f797e7f8c24d24ca53c6f52ab3898e1d574a612c2aa97ea8b0051ba8b60",
+  "pmoired_version": "26.10.1"
+ },
+ "language": "python"
+}

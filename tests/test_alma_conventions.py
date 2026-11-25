@@ -71,6 +71,7 @@ def peak_error(z, conjugate, source):
     return max(abs(e - east), abs(n - north))
 
 
+@pytest.mark.slow
 @pytest.mark.validates("crosscheck.alma", "external_bridge.alma_worker", **VALIDATES)
 def test_dirty_image_peaks_at_the_casa_predicted_sources(clean_read):
     """The bright source is at (+300, +100) mas and the faint one at
@@ -99,6 +100,7 @@ def test_visibilities_are_the_conjugate_of_the_data_column_at_plus_uvw(clean_rea
     assert worst < 1e-6  # float32 rounding of 15 mJy is 1e-9
 
 
+@pytest.mark.slow
 @pytest.mark.validates("crosscheck.alma", "external_bridge.alma_worker", kind="control", **VALIDATES)
 def test_control_unconjugated_data_puts_the_sources_at_minus_their_position(clean, clean_read, tmp_path):
     """The wrong mapping, V = DATA at +u (conjugate=False), mirrors the
@@ -193,6 +195,7 @@ def test_stride_keeps_every_strideth_row_of_the_cross_correlations(clean, clean_
     assert np.all(sub["ant1"] != sub["ant2"])
 
 
+@pytest.mark.slow
 @pytest.mark.validates("crosscheck.alma", "external_bridge.alma_worker", **VALIDATES)
 def test_samples_are_dropped_for_flags_flag_row_and_zero_weights(tmp_path):
     """A sample is kept only if FLAG_ROW is false, neither parallel-hand
@@ -207,6 +210,7 @@ def test_samples_are_dropped_for_flags_flag_row_and_zero_weights(tmp_path):
     assert before - kept() == 100 * 4 + 100 * 4 + 100 * 4 + 100
 
 
+@pytest.mark.slow
 @pytest.mark.validates("crosscheck.alma", "external_bridge.alma_worker", **VALIDATES)
 def test_a_selection_with_more_than_one_field_raises_unless_a_field_is_given(tmp_path):
     """The reader is for one pointing: a two-field MS needs `field`, which then
@@ -221,6 +225,7 @@ def test_a_selection_with_more_than_one_field_raises_unless_a_field_is_given(tmp
     assert n[0] == n[1] == 28 * 5 * 60 * 4  # 28 baselines x 300 integrations (30 min each) x 4 channels
 
 
+@pytest.mark.slow
 @pytest.mark.validates("crosscheck.alma", "external_bridge.alma_worker", **VALIDATES)
 def test_weight_spectrum_is_used_when_present_and_the_source_is_recorded(clean, clean_read, tmp_path):
     """Without the column the reader uses WEIGHT (and says so); with a

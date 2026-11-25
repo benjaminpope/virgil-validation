@@ -8,9 +8,11 @@ on:
   workflow_dispatch:
 
 env:
+  XLA_PYTHON_CLIENT_PREALLOCATE: "false"  # prevent JAX from preallocating 75% of 7 GB GitHub-hosted runner RAM
+
   # The virgil commit that pull requests and pushes test against. Bump it
   # deliberately; the weekly and manual runs test virgil's main instead.
-  VIRGIL_REF: d79696de9d970396d9f2d007312bcffc3bcf11e7  # virgil#664 merged: sqrt-pixel LinearImage, L-BFGS-B, kkt_report, LCurve.dof_discrepancy, fit_staged_nuisances (the registered IM Lup lambda rule)
+  VIRGIL_REF: c2be8278a4d6549282b3cf199852101929df0462  # virgil 0.4.2 release candidate (virgil#722)
 
   # The virgil-vlti commit (public; the loader behind tests/test_calibrated_load.py,
   # which skips without it). Bump deliberately; weekly and manual runs use main.
@@ -19,6 +21,8 @@ env:
 jobs:
   validate:
     runs-on: ubuntu-latest
+    # pull requests and pushes (fast tests, about 45 min); the weekly and manual run is every test and may take hours
+    timeout-minutes: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && 360 || 90 }}  # a stalled or thrashing run fails with its log instead of 'lost communication' at 6 h
     steps:
       - uses: actions/checkout@v4
         with:
@@ -26,14 +30,32 @@ jobs:
       - uses: astral-sh/setup-uv@v6
       - name: environment
         run: |
+          if [ "$(uname)" = Linux ]; then
+            sudo apt-get update -qq
+            sudo apt-get install -y --no-install-recommends libgfortran5 patchelf
+          fi
           uv venv --python 3.12 .venv
           ref="$VIRGIL_REF"
           vlti_ref="$VLTI_REF"
           if [ "${{ github.event_name }}" = schedule ] || [ "${{ github.event_name }}" = workflow_dispatch ]; then ref=main; vlti_ref=main; fi
           echo "Testing virgil at $ref, virgil-vlti at $vlti_ref"
           uv pip install --python .venv/bin/python -e ".[external,polar-disk]" \
-            "virgil-astro[orbits,radio] @ git+https://github.com/benjaminpope/virgil@$ref" \
+            "virgil-astro[orbits,radio,pipeline] @ git+https://github.com/benjaminpope/virgil@$ref" \
             "virgil-vlti @ git+https://github.com/benjaminpope/virgil-vlti@$vlti_ref"
+          if [ "$(uname)" = Linux ] && [ "$(uname -m)" = x86_64 ]; then
+            # casatools' manylinux_2_34 wheel links Rocky 9's libssl.so.3 (requiring Red Hat's
+            # OPENSSL_3.0.1 symbol version) against Ubuntu's system libcrypto.so.3; manylinux_2_28
+            # bundles a self-contained OpenSSL 1.1 pair in casatools.libs/.
+            uv pip install --no-deps --python .venv/bin/python --reinstall-package casatools \
+              --python-platform x86_64-manylinux_2_28 "casatools==6.7.6.14"
+          fi
+          if [ "$(uname)" = Linux ] && command -v patchelf >/dev/null 2>&1 && command -v readelf >/dev/null 2>&1; then
+            while IFS= read -r so; do
+              if readelf -W -l "$so" 2>/dev/null | grep -q 'GNU_STACK.*RWE'; then
+                patchelf --clear-execstack "$so"
+              fi
+            done < <(find .venv -path '*casatools*/*.so*')
+          fi
       - name: imaging-contest data cache
         uses: actions/cache@v4
         with:
@@ -44,7 +66,11 @@ jobs:
       - name: CANDID (own environment, pinned commit)
         run: bash scripts/setup_candid.sh
       - name: eht-imaging, MPoL, fouriever, orbitize! and CASA (own environments, pinned versions)
-        run: bash scripts/setup_external.sh ehtim mpol fouriever orbitize alma
+        run: |
+          bash scripts/setup_external.sh ehtim mpol fouriever orbitize alma
+          echo "CASASITECONFIG=$GITHUB_WORKSPACE/.venv-alma/casasiteconfig.py" >> "$GITHUB_ENV"
+      - name: verify casatools in .venv
+        run: .venv/bin/python -c "import casatools; tb = casatools.table(); me = casatools.measures(); loc = me.observatory('ALMA'); assert 'm0' in loc; me.done(); print(casatools.version_string())"
       - name: orbit page (generated, git-ignored; the docs-link tests and the Trust page read it)
         run: |
           .venv/bin/python scripts/orbit_gallery.py render --out build/orbit_gallery.md --json docs/assets/orbits.json
@@ -53,14 +79,33 @@ jobs:
         if: github.event_name != 'schedule' && github.event_name != 'workflow_dispatch'
         env:
           VV_REQUIRE_VLTI: "1"  # tests/test_calibrated_load.py must not skip silently
+          PYTHONUNBUFFERED: "1"  # a cancelled run shows the test that was running
           VV_REQUIRE_VIRGIL_IMPORTS: "1"  # a missing virgil module is a collection error, not a silent skip
-        run: .venv/bin/python -m pytest -m "not slow" -v --evidence evidence.jsonl
+        run: |
+          # memory logger (one line a minute: used/free/available MB, biggest python RSS MB)
+          ( while true; do echo "$(date +%T) $(free -m | sed -n 2p) pyRSS_MB=$(ps -C python -o rss= | sort -n | tail -1 | awk '{print int($1/1024)}')"; sleep 60; done ) > mem.log 2>&1 &
+          memlog=$!
+          trap 'kill $memlog 2>/dev/null || true' EXIT
+          .venv/bin/python -m pytest -m "not slow" -v --durations=60 --evidence evidence.jsonl
       - name: all tests
         if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
         env:
           VV_REQUIRE_VLTI: "1"
+          PYTHONUNBUFFERED: "1"
           VV_REQUIRE_VIRGIL_IMPORTS: "1"
-        run: .venv/bin/python -m pytest -v --evidence evidence.jsonl
+        run: |
+          # memory logger (one line a minute: used/free/available MB, biggest python RSS MB)
+          ( while true; do echo "$(date +%T) $(free -m | sed -n 2p) pyRSS_MB=$(ps -C python -o rss= | sort -n | tail -1 | awk '{print int($1/1024)}')"; sleep 60; done ) > mem.log 2>&1 &
+          memlog=$!
+          trap 'kill $memlog 2>/dev/null || true' EXIT
+          .venv/bin/python -m pytest -v --durations=60 --evidence evidence.jsonl
+      - name: memory log
+        # free -m: total used free shared buff/cache available
+        if: always()
+        run: |
+          [ -f mem.log ] || exit 0
+          cat mem.log
+          awk '{split($NF,a,"="); if (a[2]+0>r) r=a[2]+0; if (min==""||$8+0<min) min=$8+0} END {print "PEAK python RSS MB:", r, "  MIN available MB:", min}' mem.log
       - name: virgil's own evidence
         # weekly and manual runs: the JUnit evidence from virgil's latest
         # successful CI run on main (the float64 Linux job)
@@ -138,6 +183,7 @@ jobs:
             evidence.jsonl
             virgil-evidence.jsonl
             evidence.md
+            mem.log
             trust.md
             trust.json
           if-no-files-found: ignore
@@ -158,7 +204,7 @@ jobs:
         run: |
           uv venv --python 3.12 .venv
           uv pip install --python .venv/bin/python -e ".[external]" \
-            "virgil-astro[orbits,radio] @ git+https://github.com/benjaminpope/virgil@main"
+            "virgil-astro[orbits,radio,pipeline] @ git+https://github.com/benjaminpope/virgil@main"
       - name: report
         run: .venv/bin/python scripts/report.py --pulls 200
       - uses: actions/upload-artifact@v4

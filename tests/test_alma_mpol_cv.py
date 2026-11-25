@@ -2,7 +2,7 @@
 dartboard folds (``external_bridge.mpol_worker`` tasks ``export_fold_asdf`` and ``score_fold``, ``external_bridge.cv_folds``).
 Design: ``design/alma_imlup_p3.md`` ("Built: MPoL on the dartboard folds"), formats ``docs/alma_conventions.md`` Part 6.
 
-* numpy only (``cv_folds``): matching asdf points to npz points whatever the channel order, the profiled score, the tallies.
+* the numpy-only checks of ``cv_folds`` and ``cv_compare`` are in tests/test_cv_folds.py and tests/test_cv_compare.py (split from this file).
 * with MPoL's environment (``.venv-mpol``, asdf, the examples clone) and virgil (``virgil.radio``), on a synthetic keyed set of 26
   ddids (visibilities with antennas, times and channels that run up in frequency for some ddids and down for others, plus
   explicit Hermitian partners) written as npz and as an asdf of the layout ``export_asdf.py`` writes:
@@ -21,7 +21,7 @@ import numpy as np
 import pytest
 
 from evidence.plugin import record
-from external_bridge import cv_compare, cv_folds
+from _cv_common import _cv_dirs
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "scripts"))
@@ -29,184 +29,6 @@ import test_alma_mpol as tm  # noqa: E402
 import test_alma_mpol_ref as tr  # noqa: E402
 
 C = 299792458.0
-
-
-# ------------------------------------------------------------------ numpy only
-
-
-def _points(rng, n=60, nchan=4):
-    """Keyed points of one ddid: ``time`` unique per row, channels of ascending frequency, random flags."""
-    row, ch = np.nonzero(rng.uniform(size=(n, nchan)) > 0.15)
-    freqs = 2.3e11 + 4e7 * np.arange(nchan)
-    ant = np.stack([rng.integers(0, 20, n), rng.integers(20, 40, n)], 1)
-    return dict(freq=freqs[ch], time=1.0e9 + 6.0 * row, ant1=ant[row, 0], ant2=ant[row, 1], u=rng.normal(size=len(row)) * 1e6, v=rng.normal(size=len(row)) * 1e6,
-                weight=np.exp(rng.normal(8, 0.3, len(row))))
-
-
-@pytest.mark.validates("external_bridge.cv_folds", roots=["mathematics"], kind="reference")
-def test_match_index_pairs_the_points_whatever_the_order_of_channels_and_rows():
-    """The asdf's points (channel-major, frequency descending, as visread flips an ascending MS) are paired with the npz's
-    (row-major, ascending) by their keys: each gets the npz point it was made from."""
-    rng = np.random.default_rng(0)
-    b = _points(rng)
-    order = np.lexsort((b["time"], -b["freq"]))  # channel-major, descending frequency: what loaddata returns
-    a = {k: v[order] for k, v in b.items()}
-    idx, bad = cv_folds.match_index(a, b)
-    assert bad == 0
-    np.testing.assert_array_equal(idx, order)  # a[i] is b[order[i]]
-    shuffled = rng.permutation(len(order))
-    idx2, bad2 = cv_folds.match_index({k: v[shuffled] for k, v in a.items()}, b)
-    assert bad2 == 0 and np.array_equal(idx2, order[shuffled])
-
-
-@pytest.mark.validates("external_bridge.cv_folds", roots=["mathematics"], kind="control")
-def test_match_index_and_labels_refuse_data_that_are_not_the_same_points():
-    """A different count raises; a time or antenna that differs is counted and ``labels_for_ddid`` raises; so does a u that is off by
-    1e-3 (a wrong pairing would put points in the wrong fold); missing keys raise instead of assuming the order."""
-    rng = np.random.default_rng(1)
-    b = _points(rng)
-    with pytest.raises(ValueError, match="cannot match"):
-        cv_folds.match_index({k: v[:-1] for k, v in b.items()}, b)
-    a = {k: v.copy() for k, v in b.items()}
-    a["ant1"][3] += 1
-    _, bad = cv_folds.match_index(a, b)
-    assert bad > 0
-    folds = {"fold_07": np.zeros(len(b["u"]), np.int8), "annulus_07": np.zeros(len(b["u"]), np.int8)}
-    with pytest.raises(ValueError, match="channel, time or antennas"):
-        cv_folds.labels_for_ddid(a, folds, 7, b)
-    a = {k: v.copy() for k, v in b.items()}
-    a["u"] = a["u"] * (1 + 1e-3)
-    with pytest.raises(ValueError, match="differ beyond"):
-        cv_folds.labels_for_ddid(a, folds, 7, b)
-    cv_folds.labels_for_ddid({k: v.copy() for k, v in b.items()}, folds, 7, b)  # the same points pass
-    with pytest.raises(ValueError, match="lack"):
-        cv_folds.match_index({k: v for k, v in b.items() if k != "time"}, b)
-
-
-@pytest.mark.validates("external_bridge.cv_folds", roots=["mathematics"], kind="reference")
-def test_profiled_score_is_the_minimum_over_a_global_error_scale():
-    """``profiled`` equals the minimum over s of w|r|^2/(2 s^2) + 2 ln s + ln 2 pi - ln w, and s_hat^2 = chi2 / 2n."""
-    rng = np.random.default_rng(2)
-    n = 500
-    w = np.exp(rng.normal(3, 0.5, n))
-    r2 = w * rng.exponential(1.0, n) * 3.0
-    s_grid = np.linspace(0.5, 6, 200001)
-    ll = np.array([np.sum(0.5 * r2 / s**2 + 2 * np.log(s) + cv_folds.LN2PI - np.log(w)) for s in s_grid[::200]])
-    nll_s1 = np.sum(0.5 * r2 + cv_folds.LN2PI - np.log(w))
-    prof, s_hat = cv_folds.profiled(n, nll_s1, r2.sum())
-    assert prof == pytest.approx(ll.min(), rel=1e-6) and prof <= ll.min() + 1e-9
-    assert s_hat == pytest.approx(np.sqrt(r2.sum() / (2 * n)))
-    assert np.isnan(cv_folds.profiled(0, 0.0, 0.0)[0])
-
-
-@pytest.mark.validates("external_bridge.cv_folds", roots=["mathematics"], kind="reference")
-def test_tally_layout_is_virgils_score_layout():
-    t = cv_folds.tally([0, 2, 2, 1], 4, [1.0, 2.0, 3.0, 4.0], [0.5, 1.0, 1.5, 2.0], [5.0, 6.0, 7.0, 8.0])
-    assert t == dict(n=[1, 1, 2, 0], nll=[1.0, 4.0, 5.0, 0.0], chi2_raw=[0.5, 2.0, 2.5, 0.0], chi2_fit=[5.0, 8.0, 13.0, 0.0])
-    assert cv_folds.add_tallies(t, t)["n"] == [2, 2, 4, 0]
-
-
-def _heldout(rng, n, scale=1.0, shift=0.0):
-    """A ``heldout`` dict of ``n`` points at random ddids and annuli: per-point -ln L, chi^2 at the quoted weights and at the fitted s."""
-    dd, an = rng.integers(0, 26, n), rng.integers(0, 12, n)
-    w = np.exp(rng.normal(5, 0.3, n))
-    r2 = rng.exponential(2.0, n) * scale
-    s = 1.0 + 0.2 * rng.uniform(size=26)
-    t = lambda ids, size, nll, chi_fit: cv_folds.tally(ids, size, nll, r2, chi_fit)  # noqa: E731
-    nll_fit = 0.5 * r2 / s[dd] ** 2 + 2 * np.log(s[dd]) + cv_folds.LN2PI - np.log(w) + shift
-    nll_s1 = 0.5 * r2 + cv_folds.LN2PI - np.log(w) + shift
-    fit = r2 / s[dd] ** 2
-    ho = dict(by_ddid=t(dd, 26, nll_fit, fit), by_annulus=t(an, 12, nll_fit, fit), by_ddid_s1=t(dd, 26, nll_s1, r2), by_annulus_s1=t(an, 12, nll_s1, r2))
-    ho.update(nll=float(nll_fit.sum()), chi2_s1=float(r2.sum()), chi2_fit=float(fit.sum()))
-    return ho
-
-
-def _cv_dirs(tmp_path, lams=(0.1, 1.0, 10.0), k=3, sha="abc", n=300, mpol_sha=None, record=None, times=True):
-    """``record(f)`` returns fold ``f``'s extra score.json fields (default: the provenance of a correct chain, and stage time records)."""
-    v, m = tmp_path / "cv", tmp_path / "mpol"
-    for lam in lams:
-        for f in range(k):
-            d = v / f"lam_{lam:g}" / f"fold_{f}"
-            d.mkdir(parents=True)
-            (d / "cv.json").write_text(json.dumps(dict(lam=lam, fold=f, folds_sha256=sha, n_test=n, heldout=_heldout(np.random.default_rng(10 * f + int(lam * 10)), n, scale=1.0 + 0.1 * abs(np.log10(lam))))))
-    (v / "cv_summary.json").write_text(json.dumps(dict(lam_star=1.0)))
-    for f in range(k):
-        d = m / f"fold_{f}"
-        d.mkdir(parents=True)
-        extra = record(f) if record else dict(train_fold=f, checkpoint_trained_fold=f)
-        (d / "score.json").write_text(json.dumps(dict(fold=f, folds_sha256=mpol_sha or sha, heldout=_heldout(np.random.default_rng(100 + f), n, scale=1.3), **extra)))
-        if times:
-            for st, wall in ((0, 7000.0), (1, 14000.0)):
-                (d / f"stage{st}.time.json").write_text(json.dumps(dict(fold=f, stage=st, exit=0, epochs=10, wall_s=wall)))
-    return m, v
-
-
-@pytest.mark.validates("external_bridge.cv_compare", roots=["mathematics"], kind="control")
-def test_cv_compare_flags_a_checkpoint_not_trained_without_its_fold(tmp_path):
-    """The chain of custody: a score.json whose training asdf was another fold's, whose checkpoint was trained on another fold (an all-data
-    or neighbouring-fold checkpoint scored by a path slip), or that records neither, and a fold without its training times, are all
-    reported as problems; the correct chain reports none."""
-    def problems(**kw):
-        m, v = _cv_dirs(tmp_path / str(len(list(tmp_path.iterdir()))), **kw)
-        mpol, virgil, summary = cv_compare.load_mpol(m), *cv_compare.load_virgil(v)
-        return cv_compare.compare(mpol, virgil, summary, lam0=1.7)["problems"]
-
-    assert problems() == []
-    wrong_asdf = problems(record=lambda f: dict(train_fold=(f + 1) % 3, checkpoint_trained_fold=f))
-    assert any("fold 0" in p and "training asdf" in p for p in wrong_asdf)
-    wrong_ckpt = problems(record=lambda f: dict(train_fold=f, checkpoint_trained_fold=1 if f == 0 else f))
-    assert len(wrong_ckpt) == 1 and "fold 0" in wrong_ckpt[0] and "training fold is 1" in wrong_ckpt[0]
-    none = problems(record=lambda f: {}, times=False)
-    assert sum("training asdf" in p for p in none) == 3 and sum("no record" in p for p in none) == 3 and sum("time.json" in p for p in none) == 3
-
-
-@pytest.mark.validates("external_bridge.cv_compare", roots=["mathematics"], kind="reference")
-def test_cv_compare_lines_up_the_two_codes_per_fold_and_per_annulus(tmp_path):
-    """On synthetic scores in the layout both codes write: lambda* is read from ``cv_summary.json``, the matched lambda is the grid value
-    nearest lambda_0 in log, the totals are the sums over folds, per-annulus numbers add up to the totals, raw chi^2/N is reported first
-    in the markdown, and s_hat is the root of the raw chi^2/N."""
-    m, v = _cv_dirs(tmp_path)
-    mpol, virgil, summary = cv_compare.load_mpol(m), *cv_compare.load_virgil(v)
-    res = cv_compare.compare(mpol, virgil, summary, lam0=1.7)
-    assert res["lam_star"] == 1.0 and res["lam_match"] == 1.0 and res["problems"] == [] and res["folds"] == [0, 1, 2]
-    assert cv_compare.compare(mpol, virgil, summary, lam0=4.0)["lam_match"] == 10.0  # nearest in log: 4 is 0.6 decades from 1 and 0.4 from 10
-    for name in ("mpol", "virgil_lam_star", "virgil_lam_match"):
-        tot = res["total"][name]
-        per = [res["per_fold"][name][str(f)] for f in range(3)]
-        assert tot["n"] == sum(p["n"] for p in per) == 900
-        assert tot["nll"] == pytest.approx(sum(p["nll"] for p in per), rel=1e-12)
-        assert tot["chi2_raw_per_n"] == pytest.approx(sum(p["chi2_raw_per_n"] * p["n"] for p in per) / tot["n"], rel=1e-12)
-        assert sum(tot["annulus"]["n"]) == tot["n"]
-        assert np.sum(np.asarray(tot["annulus"]["chi2_raw_per_n"]) * np.asarray(tot["annulus"]["n"])) / tot["n"] == pytest.approx(tot["chi2_raw_per_n"], rel=1e-12)
-    t = res["total"]["mpol"]
-    assert t["s_hat"] == pytest.approx(np.sqrt(t["chi2_raw_per_n"]), rel=1e-12)
-    md = cv_compare.markdown(res)
-    assert md.index("raw chi^2/N") < md.index("-ln L profiled") and "## Per dartboard annulus" in md and "MPoL (lam_ent 1e-09)" in md
-    cv_compare.plot(res, tmp_path / "p.png")
-    assert (tmp_path / "p.png").stat().st_size > 1000
-
-
-@pytest.mark.validates("external_bridge.cv_compare", roots=["mathematics"], kind="control")
-def test_cv_compare_flags_different_folds_missing_folds_and_unequal_counts(tmp_path):
-    """Scores on different folds (another sha256), a lambda missing a fold, or a different number of held-out points are reported as problems, not compared silently."""
-    m, v = _cv_dirs(tmp_path / "a", mpol_sha="other")
-    mpol, virgil, summary = cv_compare.load_mpol(m), *cv_compare.load_virgil(v)
-    assert any("different folds" in p for p in cv_compare.compare(mpol, virgil, summary, 1.0)["problems"])
-    m, v = _cv_dirs(tmp_path / "b")
-    (v / "lam_1" / "fold_2" / "cv.json").unlink()
-    mpol, virgil, summary = cv_compare.load_mpol(m), *cv_compare.load_virgil(v)
-    assert any("fold(s) [2]" in p for p in cv_compare.compare(mpol, virgil, summary, 1.0)["problems"])
-    m, v = _cv_dirs(tmp_path / "c")
-    rec = json.loads((m / "fold_0" / "score.json").read_text())
-    rec["heldout"] = _heldout(np.random.default_rng(1), 250)
-    (m / "fold_0" / "score.json").write_text(json.dumps(rec))
-    mpol, virgil, summary = cv_compare.load_mpol(m), *cv_compare.load_virgil(v)
-    assert any("held-out points" in p for p in cv_compare.compare(mpol, virgil, summary, 1.0)["problems"])
-    with pytest.raises(ValueError, match="two score.json"):
-        shutil_copy = tmp_path / "c" / "mpol" / "fold_0b"
-        shutil_copy.mkdir()
-        (shutil_copy / "score.json").write_text((m / "fold_0" / "score.json").read_text())
-        cv_compare.load_mpol(m)
 
 
 # ------------------------------------------------------------------ the synthetic set, MPoL's environment and virgil
@@ -319,7 +141,8 @@ def _keys(ddid, freq, time, a1, a2):
                    np.asarray(a1).tolist(), np.asarray(a2).tolist()))
 
 
-@pytest.mark.validates("external_bridge.mpol_worker", roots=["mpol", "mathematics"], kind="reference")
+@pytest.mark.slow
+@pytest.mark.validates("external_bridge.mpol_worker", roots=["mpol", "mathematics"], kind="reference", tier="B")
 @needs_env
 def test_training_asdf_keeps_exactly_the_points_of_virgils_other_folds(cv, tmp_path):
     """For each fold J, the points ``loaddata`` returns from the training asdf are the points of virgil's fold file with fold != J
@@ -349,7 +172,8 @@ def test_training_asdf_keeps_exactly_the_points_of_virgils_other_folds(cv, tmp_p
     record("export_fold_asdf worst relative u difference to the npz", res["worst_match"]["u_max_rel"])
 
 
-@pytest.mark.validates("external_bridge.mpol_worker", roots=["mpol", "mathematics"], kind="reference")
+@pytest.mark.slow
+@pytest.mark.validates("external_bridge.mpol_worker", roots=["mpol", "mathematics"], kind="reference", tier="B")
 @needs_env
 def test_hermitian_partners_are_in_the_same_training_asdf_or_both_out(cv, tmp_path):
     """Every point and its explicit Hermitian partner (baseline swapped, (u, v) -> (-u, -v), V conjugated; the synthetic set
@@ -372,7 +196,8 @@ def test_hermitian_partners_are_in_the_same_training_asdf_or_both_out(cv, tmp_pa
     record("hermitian pairs checked in a training asdf", n_pairs)
 
 
-@pytest.mark.validates("external_bridge.mpol_worker", roots=["mpol"], kind="control")
+@pytest.mark.slow
+@pytest.mark.validates("external_bridge.mpol_worker", roots=["mpol"], kind="control", tier="B")
 @needs_env
 def test_score_fold_checks_the_training_asdf_is_the_folds_own(cv, tmp_path):
     """``train_asdf`` of the right fold is recorded (fold, flagged count, hash of its flags, echoed checkpoint fold); another fold's
@@ -390,7 +215,8 @@ def test_score_fold_checks_the_training_asdf_is_the_folds_own(cv, tmp_path):
         tr._run(dict(base, train_asdf=cv["asdf"]), tmp_path)
 
 
-@pytest.mark.validates("external_bridge.mpol_worker", roots=["mpol"], kind="control")
+@pytest.mark.slow
+@pytest.mark.validates("external_bridge.mpol_worker", roots=["mpol"], kind="control", tier="B")
 @needs_env
 def test_export_fold_asdf_refuses_an_npz_that_is_not_the_asdfs_data(cv, tmp_path):
     """The fold file of one dataset against the asdf of another (other times and baselines) raises instead of writing a mask."""
@@ -410,7 +236,8 @@ def _virgil_scores(cv, held_mask, values):
     return sc, s1
 
 
-@pytest.mark.validates("external_bridge.mpol_worker", roots=["mpol", "mathematics"], kind="check")
+@pytest.mark.slow
+@pytest.mark.validates("external_bridge.mpol_worker", roots=["mpol", "mathematics"], kind="check", tier="B")
 @needs_env
 def test_score_fold_agrees_with_virgils_score_on_the_same_held_out_points(cv, tmp_path):
     """The held-out scores of ``score_fold`` (MPoL's own model: ``Net``, accurate NuFFT, ``adjust_*``) and of
@@ -472,7 +299,8 @@ def test_cv_compare_subcommand_writes_its_files_and_converts_lam_ent_by_c11(tmp_
     assert (tmp_path / "out" / "mpol_cv_compare.md").read_text().startswith("# MPoL and virgil") and (tmp_path / "out" / "mpol_cv_compare.png").exists()
 
 
-@pytest.mark.validates("external_bridge.mpol_worker", roots=["mpol", "mathematics"], kind="check")
+@pytest.mark.slow
+@pytest.mark.validates("external_bridge.mpol_worker", roots=["mpol", "mathematics"], kind="check", tier="B")
 @needs_env
 def test_held_out_scores_of_all_folds_add_up_to_the_all_data_score(cv, tmp_path):
     """The four folds' held-out counts and ``chi2_raw`` per ddid sum to virgil's score of every point at the same parameters (counts

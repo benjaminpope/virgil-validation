@@ -1,6 +1,6 @@
 """The pre-registered regulariser-weight rule of the IM Lup deconvolutions (``lambda_selection`` in ``design/alma_imlup_gate_criteria.yml``, items 1-9 and D1-D6).
 
-Primary arm only: maximum entropy on sqrt(I) pixels (``LinearImage(parametrisation="sqrt")``, ``MaxEntropy``, L-BFGS-B), the weight w the root of the
+Primary arm only: maximum entropy on sqrt(I) pixels (``LinearImage(parametrization="sqrt")``, ``MaxEntropy``, L-BFGS-B), the weight w the root of the
 degrees-of-freedom-corrected discrepancy m(w) = chi2_q / s^2 - (n_real - G(w)). Stages, each writing one JSON and ending the run with a written reason when it fails::
 
     sigma  -> sigma.json    s^2 from the data scatter (full data), its error, raw chi^2/N, lag-1 correlation; fails if sigma_s / s^2 > 2e-3
@@ -15,6 +15,7 @@ import dataclasses
 import hashlib
 import json
 import pathlib
+import time
 import warnings
 
 import numpy as np
@@ -233,7 +234,7 @@ def build(data, *, npix, pixel_mas, flux, ref_obs, chunk_size=None):
     shift = -pixel_mas / 2.0
 
     def scene(values):
-        return LinearImage(values["pixels"], pixel_mas, dra=shift, ddec=shift, ft="auto", parametrisation="sqrt", reference_flux=flux)
+        return LinearImage(values["pixels"], pixel_mas, dra=shift, ddec=shift, ft="auto", parametrization="sqrt", reference_flux=flux)
 
     nuis = CalibrationNuisance(data, ref_obs=ref_obs, alpha=False, gains=False, offsets=False, sigmas=False, fit_flux=False)
     term = data.term(scene, nuis, chi2="toeplitz")
@@ -304,6 +305,36 @@ def psi_hp_map(pixels, pixel_mas, floor=1e-30):
 # ---------------------------------------------------------------- sweep stage (items 3, 4, D1, D2, D5)
 
 
+def counting_curvature(curvature, log=print, every=50, clock=time.perf_counter):
+    """``curvature`` (``model -> (v -> K v)``) wrapped to count and time the products, for ``dof_discrepancy``'s silent CG loops.
+    Logs the calls and seconds so far (and seconds per call) at each new model (a change of weight) and every ``every`` calls. ``wrapped.stats`` holds the running ``calls`` and ``seconds``."""
+    stats = dict(calls=0, seconds=0.0, models=0)
+
+    def report(why):
+        per = stats["seconds"] / stats["calls"] if stats["calls"] else float("nan")
+        log(f"  curvature ({why}): {stats['calls']} calls, {stats['seconds']:.1f} s so far, {per:.3g} s/call")
+
+    def wrapped(model):
+        if stats["models"]:
+            report(f"new weight, model {stats['models'] + 1}")
+        stats["models"] += 1
+        product = curvature(model)
+
+        def timed(v):
+            t0 = clock()
+            out = product(v)
+            stats["seconds"] += clock() - t0
+            stats["calls"] += 1
+            if stats["calls"] % every == 0:
+                report("progress")
+            return out
+
+        return timed
+
+    wrapped.stats = stats
+    return wrapped
+
+
 def sweep_stage(data, sigma, *, npix, pixel_mas, seed=0, gtol=1e-4, time_limit=None, cg_maxit=2000, max_steps=20000, log=print):
     """The fast loop. Returns ``(record, start_values)``: the grid fitted from large w down, G by Hutchinson, the D5 crossing with up to ``MAX_SECANT`` secant refits;
     ``RuleFailure`` (with the record) on D1 (m <= 0 at the first point, no sign change) or D2 (|m| > 3 se(G) after the secant steps). ``start_values`` is the root's fit, the start of the final stage."""
@@ -330,16 +361,25 @@ def sweep_stage(data, sigma, *, npix, pixel_mas, seed=0, gtol=1e-4, time_limit=N
         return res
 
     chi2 = np.array([float(sum(r.info["chi2"])) for r in results])
+    if unconverged:  # item 6 has already failed on the grid: record it now, not after the hours the curvature step can take
+        points = [dict(weight=float(w), w_over_s2=float(w) / s2, chi2=float(c), kkt_w=kkt_of(r)[0], band_limit=kkt_of(r)[1]) for w, c, r in zip(weights, chi2, reports)]
+        rec = dict(stage="sweep", s2=s2, sigma_s=sigma_s, fingerprint=sigma["fingerprint"], seed=int(seed), n_rows=len(data.u), n_real=n_eff, npix=int(npix), pixel_mas=float(pixel_mas), flux_jy=float(sigma["flux_jy"]),
+                   ref_obs=int(sigma["ref_obs"]), points=points, unconverged_fits=unconverged, curvature_step_run=False,
+                   note="the curvature step (dof_discrepancy) was not run because item 6 had already failed on the grid fits; m and g do not exist")
+        raise RuleFailure(f"item 6: {len(unconverged)} fast-loop fit(s) ended with kkt_w >= {KKT_W_MAX:g} (e.g. w = {unconverged[0]['weight']:.5g}, kkt_w {unconverged[0]['kkt_w']:.3g}); refit with a smaller --gtol", rec)
+    curvature = counting_curvature(prob.curvature, log=log)
     curve = LCurve(weights, chi2, (chi2 / n_eff)[:, None], np.array([penalty_of(r, w) for r, w in zip(results, weights)]), results, refit=refit, others=())
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        out = curve.dof_discrepancy((), MaxEntropy(1.0), noise_scale2=s2, noise_scale_sigma=sigma_s, nprobe=NPROBE, tol=CG_TOL, maxit=cg_maxit, seed=seed, secant=True, max_secant=MAX_SECANT, curvature=prob.curvature)
+        out = curve.dof_discrepancy((), MaxEntropy(1.0), noise_scale2=s2, noise_scale_sigma=sigma_s, nprobe=NPROBE, tol=CG_TOL, maxit=cg_maxit, seed=seed, secant=True, max_secant=MAX_SECANT, curvature=curvature)
+    log(f"curvature step done: {curvature.stats['calls']} calls, {curvature.stats['seconds']:.1f} s")
     kkt = [kkt_of(r) for r in reports]
     table = [dict(weight=float(w), w_over_s2=float(w) / s2, chi2=float(c), m=float(m), g=float(g), kkt_w=k[0], band_limit=k[1]) for w, c, m, g, k in zip(weights, chi2, out.m_sweep, out.g_sweep, kkt)]
     rec = dict(stage="sweep", s2=s2, sigma_s=sigma_s, fingerprint=sigma["fingerprint"], seed=int(seed), n_rows=len(data.u), n_real=n_eff, npix=int(npix), pixel_mas=float(pixel_mas), flux_jy=float(sigma["flux_jy"]),
                ref_obs=int(sigma["ref_obs"]), points=table, crossings=[float(x) for x in out.roots], crossings_w_over_s2=[float(x) / s2 for x in out.roots], nprobe=NPROBE, cg_tol=CG_TOL, cg_maxit=int(cg_maxit),
                weight_band=None if out.weight_band is None else [None if x is None else float(x) for x in out.weight_band], band_note="w at s2 + 2 sigma_s and s2 - 2 sigma_s, from the grid fits alone",
-               secant_trace=[dict(weight=float(a), m=float(b), g_se=float(c)) for a, b, c in out.trace], max_secant=MAX_SECANT, warnings=sorted({str(x.message) for x in caught}), status="ok")
+               secant_trace=[dict(weight=float(a), m=float(b), g_se=float(c)) for a, b, c in out.trace], max_secant=MAX_SECANT, warnings=sorted({str(x.message) for x in caught}), status="ok",
+               curvature_step_run=True, curvature_stats=dict(curvature.stats))
     rec["unconverged_fits"] = unconverged
     if unconverged:
         raise RuleFailure(f"item 6: {len(unconverged)} fast-loop fit(s) ended with kkt_w >= {KKT_W_MAX:g} (e.g. w = {unconverged[0]['weight']:.5g}, kkt_w {unconverged[0]['kkt_w']:.3g}); refit with a smaller --gtol", rec)

@@ -179,6 +179,39 @@
   status: fixed
   links: [https://github.com/benjaminpope/virgil/pull/203]
 
+- id: F29
+  title: fit_staged_nuisances passes Stage 2's already-minimized calibration nuisances instead of nominal calibration (g = 1) as start= to Stage 3's kkt_report, inflating nuisance grad_rel >> NUISANCE_TOL and forcing StagedFit.kkt['converged'] = False at a stationary joint solution
+  objects: [virgil.radio.fit_staged_nuisances, virgil.radio.StagedFit]
+  ruling: virgil
+  referee: mathematics (Stage 3 image KKT converges with pg_rel < KKT_TOL, zero_violation = 0, and kkt_w < KKT_W_TOL, and raw nuisance grad_norm ~ 5.6e-4 has grad_rel ~ 7.6e-4 < NUISANCE_TOL = 1e-3 relative to nominal g = 1, whereas dividing by Stage 2's post-optimization gradient inflates grad_rel to 1.10 >> NUISANCE_TOL)
+  kind: bug (Stage 3 kkt_report normalizes nuisance gradients against Stage 2 optimum instead of nominal calibration)
+  evidence:
+    - tests/test_042_lcurve_ensemble_radio.py::test_radio_fit_staged_nuisances_recovers_gains_ref_obs_and_box_edge_guard
+    - tests/test_042_lcurve_ensemble_radio.py::test_f29_fit_staged_nuisances_stage3_kkt_converged_at_joint_optimum
+  status: open
+
+- id: F30
+  title: kkt_report constructs _Objective(..., boxed=True) on LogUniform parameters fitted in flat ln F, adding +1/F so stationary fit() optima retain grad_norm ~ 1/F and fail NUISANCE_TOL from nearby starts
+  objects: [virgil.fitting.kkt_report]
+  ruling: virgil
+  referee: mathematics (interior gtol=1e-13 fit() optimum on LogUniform(1e-2, 1.0) satisfies |d(-ln L)/dF| ~ 1.1e-4 in fitted flat ln F, matching Uniform(1e-2, 1.0) where grad_norm = 1.1e-4 and grad_rel = 9.4e-8 < NUISANCE_TOL; kkt_report sets boxed=True, adding -d(ln p)/dF = +1/F = 4.63 so grad_rel = 3.87e-3 > NUISANCE_TOL = 1e-3 and converged = False from a 5% nearby start)
+  kind: bug (kkt_report sets boxed=True on flat-coordinate LogUniform parameters, adding +1/F to nuisance gradients at stationary fit() optima)
+  evidence:
+    - tests/test_042_scenes_starlet_kkt.py::test_kkt_report_softmax_image_multiplier_and_nuisance_start_gate
+    - tests/test_042_scenes_starlet_kkt.py::test_f30_kkt_report_loguniform_nuisance_stationary_from_nearby_start
+  status: open
+
+- id: F31
+  title: kkt_report scales LinearImage('sqrt') dark-pixel want_grow deadband by sqrt(f_peak / f_i) > 1000 contrary to its docstring, suppressing >3.8e4x negative flux gradients and certifying converged = True
+  objects: [virgil.fitting.kkt_report]
+  ruling: virgil
+  referee: mathematics (kkt_report docstring states LinearImage 'sqrt' uses the same want_grow rule as 'softmax' with g = dJ/dflux and mu = 0, i.e. g_i < -3 * scale * max(kkt_rel, KKT_TOL); _want_grow multiplies that threshold on 0 < f_i < 1e-6 * f_peak by sqrt(f_peak / f_i) >= 1000, so at x_i = 1e-6 * x_peak a starved companion pixel with -g_i = 1012.5 > 3.85e4 * (3 * scale * KKT_TOL) reports want_grow = 0.0 and converged = True instead of 1/64)
+  kind: bug (LinearImage('sqrt') _want_grow multiplies dark-pixel deadband by sqrt(f_peak / f_i) > 1000 contrary to docstring, suppressing starved dark pixels)
+  evidence:
+    - tests/test_042_scenes_starlet_kkt.py::test_kkt_report_sqrt_linear_image_stationarity_and_exact_zero_pixel
+    - tests/test_042_scenes_starlet_kkt.py::test_f31_kkt_report_sqrt_dark_pixel_want_grow_unscaled_deadband
+  status: open
+
 - id: D5
   title: CANDID's and fouriever's closure-phase residual is the plain phase difference; virgil's is the chord 2 sin(delta/2) (independent closure phases), or sin(delta) plus a periodic penalty (correlated ones, since virgil#174)
   objects: [virgil.likelihood.whitened_residuals, external_bridge.candid_bridge]
@@ -224,6 +257,19 @@
   evidence: [tests/test_ehtim_reconstruction.py::test_objective_matches_ehtim]
   status: documented
 
+- id: D27
+  title: scenes.spiral evaluates arm width along radial rays |r - r_arm(theta)| with circular Euclidean caps at theta = 0 and 2*pi*turns (differs from exact Euclidean distance to the centreline by cos(psi) = 1 / sqrt(1 + (b/r)^2)), and imaging.image_field clips field_fwhms * FWHM with the outer ceiling winning when inner floor exceeds ceiling
+  objects: [virgil.scenes.spiral, virgil.imaging.image_field]
+  ruling: definition
+  referee: 'self-consistency (conformance to a specification, not an independent derivation: the checks compare scenes.spiral and image_field against reference formulas written to virgil''s own documentation; the ray-radial width matches scenes.spiral to < 1e-13 across the grid while exact Euclidean arm distance differs by > 8% of peak on inner turns and > 3.5% at r >= 16 mas; image_field ceiling-over-floor clipping is pinned with wrong-precedence controls)'
+  evidence:
+    - tests/test_042_scenes_starlet_kkt.py::test_spiral_width_is_sigma_ccw_winding_rounded_cap_and_radial_fade
+    - tests/test_042_scenes_starlet_kkt.py::test_spiral_width_fwhm_and_reversed_winding_controls
+    - tests/test_042_scenes_starlet_kkt.py::test_image_field_and_beam_floor_ceiling_and_restoration
+    - tests/test_042_scenes_starlet_kkt.py::test_image_field_unclipped_and_floor_over_ceiling_controls
+  status: documented
+  decision: 'definition, confirmed by Ben Pope 2026-11-16 (gate G1d): scenes.spiral and imaging.image_field are internal synthetic-scene and field-clipping formula choices, kept as definitions rather than convention trust-graph blockers. The checks are conformance to a specification, not an independent derivation: they compare against reference formulas written to virgil''s own documentation, and wrong-formula controls pin the documented choices.'
+
 - id: P1
   title: PMOIRED setupFit(auto=True) gives NaN models on files with few channels
   objects: [pmoired]
@@ -264,11 +310,11 @@
   objects: [crosscheck.oifits_writer]
   ruling: crosscheck
   referee: the OIFITS v2 standard (Duvert et al. 2017), checked with astropy
-  evidence: [tests/test_references.py::test_oifits_writer_meets_the_v2_standard]
+  evidence: [tests/test_reference_oifits_writer.py::test_oifits_writer_meets_the_v2_standard, tests/test_reference_oifits_writer_direct.py::test_oifits_writer_meets_the_v2_standard_on_hand_written_arrays]
   status: fixed
 
 - id: P4
-  title: CANDID's Absil detection limits are ~1 % low against its own criterion (bracketing by factors of 1.4, then linear interpolation)
+  title: CANDID's Absil detection limits sit ~1 % below the exact solution of its own criterion (interpolation error)
   objects: [candid]
   ruling: external:candid
   kind: numerics (optimistic by ~0.01 mag; negligible in practice)
@@ -403,6 +449,19 @@
   links: [https://github.com/benjaminpope/virgil/pull/343]
   note: fixed in virgil 1eae3e4 (1eae3e4b08b452cc29d1ec29b5e883b3982882f4), merged to virgil main in #343; found at 791f9fe. The kind and numbers above are the finding as made. The strict xfail on the F20 evidence test is gone (it passes at virgil main 127cc64); the F19 fix was the docstring, and its test now checks the numbers the docstring states.
 
+- id: F25
+  title: MultipoleField with r_min_mas = 0 tapers non-zero azimuthal modes by the radial node spacing instead of the physical correlation length length_r, so the prior covariance drifts when n_r is refined
+  objects: [virgil.fields.MultipoleField]
+  ruling: virgil
+  kind: 'discretization (at virgil d79696de9d97, MultipoleField(r_min_mas=0) multiplies harmonic order m by tanh(r / spacing)^|m| with spacing = r_max_mas / (n_r - 1) instead of tanh(r / length_r)^|m|; at r_max_mas = 20, length_r = 7, doubling the grid from n_r = 9 to 17 shifts the induced polar covariance at identical physical radii by 0.275 sigma^2 and misses the length_r-tapered covariance by 0.402 sigma^2. Fixed upstream in virgil 5ca955ad6ceb, where the test passes to 1e-6 and n_r = 9 vs 17 agrees to 1e-15; flip status to fixed when VIRGIL_REF advances past 5ca955ad6ceb)'
+  referee: mathematics (resolution-invariant polar Gaussian-process covariance with physical length_r Zernike-type origin regularity)
+  evidence:
+    - tests/test_multipole_companions.py::test_multipole_field_polar_covariance_and_origin_regularity
+    - tests/test_multipole_companions.py::test_f25_multipole_field_origin_taper_uses_physical_length_r_and_is_grid_invariant
+  status: fixed
+  links: [https://github.com/benjaminpope/virgil/pull/673]
+  note: identified by Gemini 4 Carbon adversarial review (session ddbaaa6e) and reproduced numerically on virgil d79696de9d97 by worker batch2-disks; fixed in virgil 5ca955ad6ceb (merged in virgil#673) and verified at virgil 0.4.2 c2be8278a4 where the strict xfail is removed and the test passes to 2.4e-6 (n_r = 9 vs 17 refinement drift 1e-15).
+
 - id: D10
   title: frank's and FRAP's discrete Hankel transforms do not represent a discontinuous profile (a sharp-edged exponential tail), to 5e-3 at Rmax = 18 000 mas, N = 300 (band limit above every baseline)
   objects: [frank, frap]
@@ -431,17 +490,16 @@
   status: to-raise
 
 - id: F22
-  title: the closure-phase residual is singular where a model visibility is zero, so image (MEM) fits that drift to a visibility null stall with AD != FD; whitened_residuals' docstring says the chi-squared is "continuous and smooth everywhere"
+  title: closure-phase residuals are undefined where a model visibility crosses zero (phase formulation vs complex bispectrum); whitened_residuals' 0.4.2 docstring drops the "continuous and smooth everywhere" claim
   objects: [virgil.likelihood.whitened_residuals]
-  ruling: virgil
-  kind: 'bug (a model visibility V passing through 0 changes its phase by pi, so every closure phase through that baseline jumps by pi and the chi-squared by ~2/sigma^2 over a step of |V|/|dV/dx|; d(phase)/dx ~ 1/|V|. Reproduced on synthetic 3-telescope data: a flat-start MEM fit ends with a model visibility of 4e-12 and does not converge, AD 6e6 against FD -4e7 at eps 1e-5. V^2 and MaxEntropy terms have AD = FD at the same point)'
-  referee: mathematics (the phase of a complex number is discontinuous at 0; a loss built from it has no bounded gradient there; the bispectrum form is polynomial in V)
-  evidence: []
-  pending: 'its tests are on the branch review/integration (tests/test_mem_null_discontinuity.py, nine tests) and are not yet on main, so no test id can be cited here; cite them when that branch lands'
-  status: open
+  ruling: definition
+  kind: 'formulation choice (a model visibility V passing through 0 changes its phase by pi, so any closure-phase residual built from arg V is singular at |V| = 0 with d(phase)/dx ~ 1/|V|, whereas a complex-bispectrum loss is polynomial in V; flat-start MEM fits that drift onto a visibility null can stall there, tracked as an enhancement in virgil#309. virgil 0.4.2 removed the "continuous and smooth everywhere" claim from whitened_residuals'' docstring)'
+  referee: mathematics (the phase of a complex number is discontinuous at 0; documented alongside eht-imaging in docs/method/ehtim.md)
+  evidence: [tests/test_ehtim_reconstruction.py::test_objective_matches_ehtim]
+  status: documented
   links: [https://github.com/benjaminpope/virgil/issues/309]
-  decision: 'accepted for virgil 0.4.0 (Ben, 2026-10-18) as a known limitation; release-notes line: "closure-phase image fits can stall where a model visibility crosses zero (virgil#309)". Fix proposed upstream: fit the complex bispectrum, as BSMEM and MiRA do, or floor the model amplitude on closure baselines, and correct the docstring. Accepted again for virgil 0.4.1 (Ben, 2026-10-23): stated in the 0.4.1 release notes under Known issues, fix tracked in virgil#309; status stays open.'
-  note: found on the review/integration branch as F20 (its number collides with the Harmonics entry above, fixed in virgil#343); its nine tests (tests/test_mem_null_discontinuity.py) land with that branch, so this entry names none yet.
+  decision: 'ruled definition / documented (Ben, 2026-11-15): closure-phase smoothness across |V| = 0 does not need to hold for the phase-residual likelihood (and whitened_residuals'' docstring no longer claims it in 0.4.2), and visibility-null stalling does not need to be a trust-graph blocker; bispectrum support remains tracked in virgil#309.'
+  note: originally recorded on review/integration as F20; tests/test_mem_null_discontinuity.py is intentionally not added as a trust node per Ben's 2026-11-15 ruling.
 
 
 - id: F23
@@ -451,7 +509,9 @@
   kind: 'documentation (through the unit-sum softmax the Skilling-Bryan metric weight * sum db^2/b has diagonal weight * b * (1 - b), which virgil returns to 1e-15; weight * b is its b << 1 limit, 1e-6 off on a million-pixel image and up to 20% on the 6 x 6 test. Nothing is wrong numerically, so there is no strict xfail: the test pins the exact form and fails if the diagonal ever becomes weight * b)'
   referee: mathematics (the metric pulled back through the softmax, dense Jacobian)
   evidence: [tests/test_radio_innovations.py::test_entropy_metric_replaces_the_data_curvature_with_the_pulled_back_skilling_bryan_metric]
-  status: open
+  status: fixed
+  links: [https://github.com/benjaminpope/virgil/pull/679]
+  note: 'fixed in virgil 56e93b7 (merged in virgil#679): gauss_newton_diag''s docstring now states weight * b * (1 - b) explicitly, pinned alongside the numerical check at virgil 0.4.2 c2be8278a4.'
 
 - id: D14
   title: noise-free recovery is judged in units of the statistical error, not at a raw relative tolerance of 1e-6
@@ -601,3 +661,123 @@
   evidence: [tests/test_pull_campaign.py::test_no_pull_campaign_scene_reaches_an_arc_function, tests/test_pull_campaign_design_hash.py::test_only_the_arc_functions_and_blank_lines_are_stripped, tests/test_pull_campaign_design_hash.py::test_any_other_edit_to_sky_py_changes_the_hash_input]
   status: documented
   links: [https://github.com/benjaminpope/virgil-validation/issues/207]
+
+- id: D23
+  title: virgil.models.smeared_model washes complex visibilities over a uniform wavenumber boxcar (variance dlambda^2 / 12), whereas CANDID Nsmear = 3 averages V coherently over three equal-weight endpoints (variance dlambda^2 / 6) and PMOIRED 'wl kernel' convolves V^2 incoherently
+  objects: [virgil.models.smeared_model, candid, pmoired]
+  ruling: definition
+  kind: 'both right, different bandpass quadrature and observable-averaging definitions: virgil.models.smeared_model multiplies each component''s sky-offset phasor by sin(pi * x) / (pi * x) == np.sinc(x) with x = bandwidth * (u * dra + v * ddec) * MAS / wavel^2, the exact coherent integral over a uniform boxcar in wavenumber sigma = 1 / lambda (second moment dlambda^2 / 12 + O(dlambda^4 / lambda^2)). CANDID''s default Nsmear = 3 averages complex V coherently with equal weights (1/3, 1/3, 1/3) at lambda_0 + (-1/2, 0, +1/2) * dwavel (pinned to chi2_r = 7e-8), which puts 2/3 of the weight on the channel edges and doubles the spectral variance to dwavel^2 / 6 (setting dwavel = dlambda / sqrt(2) restores agreement to chi2_r = 0.04, whereas unscaled dwavel = dlambda fails at chi2_r > 15; Nsmear <= 2 disables smearing). PMOIRED''s explicit ''wl kernel'' (with auto=False to avoid P1) convolves T3 bispectra coherently but convolves OI_VIS2[''V2''] incoherently as E[|V|^2], retaining an O(f^2) floor f^2 / (1 + f)^2 when wide-binary fringes wash out; at f << 1 with variance-matched FWHM sqrt(2 ln 2 / 3) * (dlambda / dwl_step), PMOIRED and virgil agree to < 8e-5 in V^2 and < 5e-3 deg in closure phase'
+  referee: mathematics (uniform-wavenumber boxcar quadrature, discrete Gaussian convolution, and 3-endpoint stencil moments); pmoired; candid
+  evidence:
+    - tests/test_042_spiral_and_smearing.py::test_candid_nsmear3_matches_coherent_three_endpoint_rule
+    - tests/test_042_spiral_and_smearing.py::test_smeared_model_matches_variance_matched_candid_nsmear3
+    - tests/test_042_spiral_and_smearing.py::test_pmoired_explicit_wl_kernel_matches_discrete_gaussian_convolution
+    - tests/test_042_spiral_and_smearing.py::test_smeared_model_matches_pmoired_explicit_wl_kernel
+    - tests/test_042_spiral_and_smearing.py::test_control_smearing_incoherent_v2_and_unscaled_candid_nsmear3_fail
+  status: documented
+
+- id: D24
+  title: 'FlaredDiskGaussian, FlaredDiskHG, and FlaredDiskPowerLaw: near-side rim orientation (pa + 90 deg) is an on-sky orientation convention, not yet confirmed by code or results written by other people'
+  objects: [virgil.models.FlaredDiskGaussian, virgil.models.FlaredDiskHG, virgil.models.FlaredDiskPowerLaw]
+  ruling: definition
+  kind: 'convention (in Blakely et al. 2025 eqs. 2-9, tilting an inclined flared scattering surface z(rho) = h_0 (rho / r_0)^beta with major-axis line of nodes at pa East of North places the near rim at pa + 90 deg; flipping pa -> pa + 180 deg moves the near rim to pa - 90 deg and reverses every first-lobe closure phase. Which half-plane corresponds to inc in (0, 90) deg at a given pa is an on-sky orientation: the near-side rim direction, the photocentre direction and the closure-phase sign all follow from it. Our own 3D surface Fourier sum pins virgil to it at < 1e-10 deg and wrong-sign controls reject the opposite choice, but both are our own transcription of the documented formula)'
+  referee: mathematics (3D flared scattering surface Fourier sum and first-lobe closure-phase sign, crosscheck.disks); this is our own transcription, so it cannot confirm the convention
+  evidence:
+    - tests/test_flared_disk_nearside.py::test_flared_disk_gaussian_nearside_geometry
+    - tests/test_flared_disk_nearside.py::test_flared_disk_hg_nearside_geometry
+    - tests/test_flared_disk_nearside.py::test_flared_disk_powerlaw_nearside_geometry
+    - tests/test_flared_disk_nearside.py::test_flared_disk_farside_controls_flip_quadrant_and_closure_phase_sign
+  status: open
+  decision: 'not ruled by Ben as a definition. On 2026-11-16 (gate G1a) Ben confirmed it stays a `convention:` on the FlaredDisk nodes in trust/graph.yml, because an on-sky orientation needs a check written by other people (code or a published result that fixes which side is near for a given pa and inc). Until one exists the nodes show "convention from virgil''s docs". ruling: definition records only that virgil''s sign is a choice, not a bug; status: open means no outside check yet. The wrong-sign control tests stay as regression guards.'
+
+- id: D25
+  title: 'PositionData: astrometric calibration sign and scale (theta_meas = theta_sky + north_angle, rho_meas = plate_scale * rho_sky) is an internal parameter-sign convention checked via properties: {calibration: 1} and wrong-sign controls'
+  objects: [virgil.orbits.PositionData]
+  ruling: definition
+  kind: 'convention (PositionData.model follows Octofitter''s nuisance parameterization Thompson et al. 2023, AJ 166, 164, adding north_angle to the sky position angle and multiplying separation by plate_scale; defining north_angle with the opposite sign or plate_scale as its reciprocal is an equivalent reparameterization that our wrong-sign controls reject by > 50 sigma, while PositionData''s astrometric log-likelihood is independently confirmed against SciPy and PMOIRED''s profiled OIFITS delta_chi2)'
+  referee: mathematics (crosscheck.orbits multi-epoch calibration recovery and wrong-sign controls)
+  evidence:
+    - tests/test_position_calibration.py::test_position_data_calibration_model_and_recovery
+    - tests/test_position_calibration.py::test_position_data_wrong_calibration_sign_and_scale_fail_by_over_50_sigma
+  status: documented
+  decision: 'definition, confirmed by Ben Pope 2026-11-16 (gate G1b); north_angle sign signed 2026-10-06. The calibration nuisance sign is an internal parameterisation, pinned via properties: {calibration: 1} and wrong-sign controls, alongside external PMOIRED confirmation of PositionData.loglike.'
+
+- id: D26
+  title: 'ArchimedeanSpiral: the internal parameterisation (departure pa deprojection, in-plane arc-length fade weight, pitch magnitude) is a definition checked via properties: {blur_projection: 2, plume_geometry: 1, render_fourier: 1} and wrong-convention controls; the on-sky winding sense (pitch > 0 counter-clockwise vs pitch < 0 clockwise) stays a convention until code or a published result written by other people confirms it'
+  objects: [virgil.models.ArchimedeanSpiral]
+  ruling: definition
+  kind: 'convention (PMOIRED''s native inclined Gaussian in the turns -> 0+ limit confirms FWHM width, cos(inc) foreshortening, and the North-through-East node independently of virgil, and dLux''s 7-hole Fraunhofer propagation of our own spiral_cloud_2d confirms the optical propagation of the extended plume but not the spiral''s parameter conventions, whereas parameterizing departure pa on the sky via tan(phi_0) = tan(pa - node) / cos(inc) and fade as exp(-fade * theta / (2 pi)) * sqrt(1 + theta^2) dtheta are internal model-parameter choices pinned via properties and rejected by wrong-convention controls. Separately, which way the arm winds on the sky for a given pitch sign (pitch > 0 counter-clockwise through East, pitch < 0 clockwise through West, quoted from Tuthill et al. 2008 ApJ 675, 698 for WR 104) is an on-sky orientation: our own tests transcribe it (crosscheck.spiral_smearing and the render assertion in test_archimedean_spiral_cvis_convergence_and_gradients), PMOIRED has no spiral and the dLux check propagates our own cloud, so no check written by other people fixes it)'
+  referee: mathematics (continuous Gauss-Legendre arc-length quadrature, WR 104 ballistic sense, and pixel-DFT consistency, crosscheck.spiral_smearing); dlux; pmoired; this is our own transcription for the winding sense, so it cannot confirm that convention
+  evidence:
+    - tests/test_042_spiral_and_smearing.py::test_archimedean_spiral_cvis_convergence_and_gradients
+    - tests/test_042_spiral_and_smearing.py::test_archimedean_spiral_pmoired_native_blur_projection
+    - tests/test_042_spiral_and_smearing.py::test_archimedean_spiral_render_and_one_pixel_width_floor
+    - tests/test_042_spiral_and_smearing.py::test_archimedean_spiral_dlux_wavefront_propagation
+    - tests/test_042_spiral_and_smearing.py::test_control_archimedean_spiral_wrong_winding_pa_fade_and_blur_fail
+  status: open
+  decision: 'split. (1) Internal parameterisation: definition, confirmed by Ben Pope 2026-11-16 (gate G1c); it stays under properties: {blur_projection: 2, plume_geometry: 1, render_fourier: 1} with the wrong-convention controls. (2) On-sky winding sense: Ben confirmed on 2026-11-16 (gate G1c) that it is a `convention: [winding_sense]` on the node in trust/graph.yml, because an on-sky orientation needs a check written by other people (code or a published result that fixes the winding direction for a given pitch sign). Until one exists the node shows "convention from virgil''s docs". ruling: definition records only that virgil''s sign is a choice, not a bug; status: open means no outside check of the winding sense yet. The wrong-winding control (neg_pitch) stays as a regression guard.'
+
+- id: F26
+  title: 'ClosureOffsets(scale_penalty=True) scales periodic wrap-penalty rows by unprojected hypot(sigma, sigma_off) from diag(M M^T), so a 4-telescope left-null mode (n^T T = 0) alters model_loglike when Delta != 0'
+  objects: [virgil.gains.ClosureOffsets, virgil.gains.closure_offsets]
+  ruling: virgil
+  kind: 'bug (on a 4-telescope frame, the 1D left-null vector n with n^T T = 0 vanishes identically for every physical realization of baseline or closure phases. In virgil 0.4.2, ClosureOffsets defaults to scale_penalty=True and divides each closure phase''s periodic chord-minus-sine correction 2 sin^2(Delta / 2) by hypot(sigma_i, sigma_off,i) with sigma_off,i^2 = (M M^T)_ii computed per triangle before projecting M onto the rank-3 column space of T, so a pure left-null mode with 0.3 rad amplitude shifts model_loglike by +0.025 nats on our 4-UT test scene whenever model_cp != data_cp, whereas scale_penalty=False projects onto col(T) and leaves model_loglike invariant to < 1e-12)'
+  referee: mathematics (closure-of-closures null-space invariance n^T T = 0 and exact dense-Gaussian marginal + periodic wrap decomposition, tests/test_gains_algebra.py)
+  evidence:
+    - tests/test_gains_algebra.py::test_f26_closure_offsets_scale_penalty_projects_onto_span_of_T
+    - tests/test_gains_algebra.py::test_offsets_outside_the_span_of_T_do_not_enter_unscaled_and_pin_scaled
+  status: open
+
+- id: P13
+  title: oimodeler's oimFastRotator places the bright pole about 180 deg from the pa input, relative to the IAU convention we expected
+  objects: [oimodeler]
+  ruling: external:oimodeler
+  kind: 'convention difference (oimodeler 0.8.1: the hot visible pole lands about 180 deg from pa under the IAU convention we expected, which inverts every closure phase sign relative to that convention; fastRotator calls np.rot90(im) before oimComponentImage maps row 0 to South, which may be the source; oimodeler''s documented pa convention not checked)'
+  referee: mathematics (translation-invariant first-lobe closure-phase sign against crosscheck.elr.cloud); pmoired (rotastar.Vrota)
+  evidence: [tests/test_rotator_convention.py::test_p13_oimodeler_fast_rotator_pole_pa_inversion]
+  status: to-raise
+
+- id: P14
+  title: oimodeler's oimFastRotator equator-on V^2 anisotropy does not follow O(omega^2) over rot = 0.01..0.04 (log-log slope 0.45 at dim = 64)
+  objects: [oimodeler]
+  ruling: external:oimodeler
+  kind: 'numerics (oimodeler 0.8.1, dim = 64 only: log-log slope 0.45 across rot = 0.01..0.04 where Roche/ELR11 centrifugal scaling gives 2; fastRotator sets a = (2/3) rot^0.4 and K = sin(1/3) pi, which may be the cause; grid convergence not checked, so a pixelization floor is not excluded)'
+  referee: mathematics (Roche/von Zeipel/ELR11 O(omega^2) centrifugal scaling of equator-on V^2 anisotropy)
+  evidence: [tests/test_rotator_convention.py::test_p14_oimodeler_fast_rotator_gravity_darkening_scaling]
+  status: to-raise
+
+- id: F27
+  title: 'Laplace approximation error in outlier_log_density(rescalable=True): large at the clip boundary (+3 to +6 nats when the scale is clipped), small in the interior (about -0.4 nats at n = 24, comparable to expected Laplace error)'
+  objects: [virgil.orbit_cells.outlier_log_density]
+  ruling: virgil
+  kind: 'numerics (Laplace approximation error; the reference is our own quadrature of the same integrand, not an independent implementation. On rescalable OIFITS nights, scaling block errors by s_g = exp(u_g) across G observable blocks inverts sum_g exp(-2 u_g) H_g for the d-dimensional peak covariance Sigma (unit-scale determinant slopes d_g = tr(H^-1 H_g) summing to d = 5 by Jacobi''s formula) and widens the Gaussian-convolved log-flux box to Sigma_44^(1/2). In virgil 0.4.2, outlier_log_density instead evaluates at hat_g = clip(sqrt(chi2_g / n_g), 1 / s_max, s_max) and unconditionally adds the interior Gaussian width 0.5 ln(pi / n_g) - ln(2 ln s_max), a Laplace approximation. Against our bounded 1D (G = 1) and 2D (G = 2, blocks=("vis", "phi")) quadrature over u_g = ln s_g in [-ln s_max, +ln s_max] it differs by -0.41 nats (single 24-datum block) and -0.40 nats (two coupled 12-datum blocks) in the interior, which is small and comparable to the expected Laplace error at this n, so not convincing on its own; the convincing gap is at the clipped boundary, +0.69 nats per boundary on s_max and +2.9 to +3.5 nats (single block) and +6.3 nats (both blocks clipped at s_max = 2, chi2_g / n_g = 16) via Watson''s lemma. Noisy equal-flux twins (m_f = +0.90, sigma_f1 = 0.25) differ by -2.4 to -3.1 nats from the same quadrature and are not separately ruled)'
+  referee: mathematics (1D adaptive and 2D composite Gauss-Legendre quadrature over u_g = ln s_g in [-ln s_max, +ln s_max] with exact normal-CDF log-flux box convolution, crosscheck.orbit_cells_ref.quad_rescalable_outlier_log_density and quad_rescalable_outlier_log_density_2block)
+  evidence:
+    - tests/test_042_orbit_cells_arcs_aliases.py::test_f27_outlier_log_density_rescalable_matches_bounded_scale_quadrature
+    - tests/test_042_orbit_cells_arcs_aliases.py::test_outlier_prior_log_flux_box_and_laplace_outlier_density
+  decision: 'wording confirmed by Ben Pope 2026-11-16 (gate G2b); whether virgil changes is undecided (G2c).'
+  status: open
+
+- id: F28
+  title: 'period_window and period_cut API docstrings omit the night_length lower floor applied in code and documented in orbit_methods.md'
+  objects: [virgil.aliases.period_window, virgil.aliases.period_cut]
+  ruling: virgil
+  kind: 'documentation (the API docstrings of virgil.aliases.period_window and virgil.aliases.period_cut state p_min = max(2 pi field night_length / (motion_fraction resolution), p_floor) without clamping at night_length, whereas virgil 0.4.2''s implementation and prose orbit_methods.md apply max(..., night_length, p_floor): in the narrow-field regime field = 0.05 mas, night_length = 0.6 d, resolution = 1.2 mas, p_floor = 0.2 d, virgil returns 0.600 d vs 0.314 d from the API docstring formula)'
+  referee: mathematics (circular-speed within-night smearing bound crosscheck.orbit_cells_ref.period_window_bounds and period_cut_bound vs virgil API docstrings)
+  evidence:
+    - tests/test_042_orbit_cells_arcs_aliases.py::test_f28_period_window_and_cut_match_api_docstring_without_night_length_clamp
+    - tests/test_042_orbit_cells_arcs_aliases.py::test_alias_bands_partition_and_period_window_bounds
+  status: open
+
+- id: F32
+  title: 'DetectionMC on an injection_recovery(uncertainty=False) run: max_snr (all NaN) queries return values instead of raising, and concatenate merges it with uncertainty=True runs'
+  objects: [virgil.detection.DetectionMC, virgil.detection.injection_recovery]
+  ruling: virgil
+  referee: 'mathematics (the documented contract: uncertainty=False leaves max_snr and flux_peak_steps NaN; a statistic that was never computed has no false-alarm probability, threshold or completeness, and runs with different statistics do not share a null distribution; behaviour measured on virgil origin/main 09b2685)'
+  kind: 'bug (false_alarm_probability("max_snr", 3.0) on an n_null = 6 uncertainty=False run returns 1/7 = 0.143, threshold returns (nan, nan), completeness returns 0.0, and DetectionMC.concatenate([mc_true, mc_false]) succeeds with meta uncertainty = True and NaN max_snr draws; none raises. BinaryPipeline''s null searches use uncertainty=False, so their containers carry the NaNs)'
+  evidence:
+    - tests/test_detection_tier_a.py::test_f32_statistics_only_max_snr_queries_raise
+    - tests/test_detection_tier_a.py::test_f32_concatenate_refuses_mixed_uncertainty
+    - tests/test_detection_tier_a.py::test_injection_recovery_without_uncertainty_matches_independent_grid_search
+  decision: 'raised by Carbon review of vv#282, reproduced here; whether virgil raises or documents the behaviour is for Ben (2026-11-20).'
+  status: open

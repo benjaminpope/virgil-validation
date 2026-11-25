@@ -1,7 +1,8 @@
 # Small helpers
 
-`tests/test_helpers.py`: light checks of helpers that need little trust,
-against our own χ². `tests/test_bias_test.py`: `bias_test` against biases we
+`tests/test_helpers.py` and `tests/test_sole_checks_hardened.py`: checks of
+simulation and likelihood helpers against our own χ² and `crosscheck.sky`
+observables. `tests/test_bias_test.py`: `bias_test` against biases we
 predict ourselves.
 
 | virgil | Reference | Tag | Agreement |
@@ -10,13 +11,13 @@ predict ourselves.
 | `likelihood.build_model`, `likelihood.loglike` | a class and a template build the same scene; loglike differences are −½ our χ² differences | Mathematics | 1e-8 |
 | `likelihood.inflated_errors`, relative to the model or the data, quadrature or maximum | the formulae in its docstring | Mathematics | 1e-14 |
 | `inference.fisher` | the Hessian of ½ our χ² by central differences | Mathematics | 1e-5 |
-| `simulate.simulate` | noiseless: our V² and closure phases; noisy: V² pulls are 𝒩(0, noise_scale²) (sd, KS) | Mathematics, statistics | 1e-12; within 4σ |
+| `simulate.simulate` | noiseless: our V² and closure phases; noisy: V² plus 3- and 4-station correlated closure-phase pulls (`𝒩(0, noise_scale²)`, signed rank-3 `(T Tᵀ)/3` correlation, and [Moore–Penrose pseudoinverse](https://en.wikipedia.org/wiki/Moore%E2%80%93Penrose_inverse) `χ²(df=3)` KS) | Mathematics + Statistics | 1e-12; within 4σ |
 | `simulate.bias_test` | each entry is the fit to the simulation drawn with that key | Self-consistency | 1e-10 |
 | `simulate.bias_test`, uniform disk fitted to itself (40 draws) | mean = truth + Box's (1971) second-order bias, 0.3 % of σ; spread = our Fisher σ | Statistics, mathematics | mean within 4 standard errors (found 2.1); variance χ² test p > 1e-3 (found 0.41) |
 | `simulate.bias_test`, Gaussian fitted to a uniform disk (40 draws) | mean = the pseudo-true σ that minimizes our noiseless χ² (White 1982), 0.787 mas | Mathematics | within 4 standard errors (found 1.4) |
 | control | no nonlinear bias: σ = D/4, the zero-baseline match | Mathematics | excluded by > 20 standard errors (found 54) |
 
-`tests/test_inference_joint.py`: the inference helpers on problems with
+`tests/test_inference_joint.py` and `tests/test_standalone_nodes.py`: the inference helpers on problems with
 closed forms, and the joint likelihood over several datasets against our
 own observables on two simulated three-telescope files.
 
@@ -26,6 +27,9 @@ own observables on two simulated three-telescope files.
 | `inference.regularized_inverse` | NumPy's `inv(M + ridge I)`; a `RuntimeWarning` for an indefinite matrix | Mathematics | 1e-12 relative |
 | `inference.laplace_covariance` | exactly (Jᵀ C⁻¹ J)⁻¹ for a model linear in its parameters; control: (Jᵀ J)⁻¹ and (Jᵀ C J)⁻¹ do not match | Mathematics | 1e-10 (ridge 0), 1e-6 (default ridge) |
 | `inference.gaussian_fisher` | Jᵀ Σ⁻¹ J exactly on a linear model; on the joint prediction, J by central differences of our V² and closure phases; control: unweighted Jᵀ J does not match | Mathematics | 1e-12; 1e-6 |
+| `inference.expected_fisher` | Jᵀ Σ⁻¹ J + ridge I against the analytic Jacobian of a nonlinear pytree model, plus flat-vector unravelling; controls: unweighted Jᵀ J and Jᵀ Σ J do not match | Mathematics | 1e-12 relative |
+| `inference.objective_laplace_covariance` | (∇²f)⁻¹ on positive-definite quartic objectives without ridge, and relative diagonal ridge with a `RuntimeWarning` when indefinite; controls: diagonal-only and uninverted Hessians do not match | Mathematics | 1e-12 relative |
+| `inference.observed_information` | the Hessian of ½ our χ² by fourth-order Richardson central differences on 3-telescope uncorrelated and 4-telescope correlated closure-phase OIFITS files (both `System` templates and callable classes), exact agreement with our Gauss–Newton Fisher Jᵀ Σ⁻¹ J on noiseless data at the truth, and nonlinear residual-curvature shift away from the truth; control: unhalved ∇²χ² does not match | Mathematics | 1e-6 relative (3e-10 vs Jᵀ Σ⁻¹ J at truth) |
 | `inference.fisher_projection` | P Pᵀ = F⁻¹ and Pᵀ F P = I; flat directions floored at eps × the largest eigenvalue, with a warning | Mathematics | 1e-10 |
 | `inference.laplace_parameter_uncertainty` | (½ ∂²χ²/∂θ²)^−½ of our χ² by central differences, the others fixed | Mathematics | 1e-5 relative |
 | `likelihood.joint_loglike` | the sum over datasets of SciPy's Gaussian (V²) and von Mises (κ = 1/σ²) log densities, i.e. −½ our χ² plus their normalisations; shared and per-dataset parameters, with and without inflated errors; control: swapped per-dataset parameters do not match | Mathematics | 1e-8 |
@@ -35,4 +39,17 @@ own observables on two simulated three-telescope files.
 | `detection.rescale_errors` | s = √(χ²/n) for each block of our χ², after which each block has χ²/n = 1 | Mathematics | 1e-10 |
 | `detection.injection_grid` | every separation and flux in the documented order; angles of (dra, ddec) uniform on [0°, 360°) (Kolmogorov–Smirnov; this does not pin the PA sign convention) | Mathematics, statistics | 1e-12; p > 1e-3 |
 | `detection.bootstrap_null` | sign flip: each whitened residual about our prediction keeps its magnitude (phases wrapped), also about another scene, with about half flipped; resample: residuals drawn only from their own block | Mathematics, statistics | 1e-8; within 4σ |
+
+## Hierarchical outlier mixture and K-fold cross-validation
+
+`tests/test_042_svi_cv_likelihood.py` checks the exact Jeffreys
+`Beta(1/2, 1/2)` group outlier mixture and generic K-fold cross-validation
+against `crosscheck.smc_tempering_ref`.
+
+| virgil | Reference | Tag | Agreement |
+| --- | --- | --- | --- |
+| `likelihood.group_outlier_mixture`, `likelihood.group_outlier_probabilities` | continuous trigonometric SciPy `quad` over [0, π] and quadrature-free 2^K combinatorial Beta-function expansion for K in {1, 4, 9, 14}, plus exact derivative of `ln Z` wrt `outlier_loglikes`; control: informative `Beta(1, 9)` differs by > 3.0 nats | Mathematics | < 1e-12 |
+| `crossval.fold_masks`, `save_record`, `load_records`, `aggregate`, `aggregate_files` | exact fold partition, JSON round-trip, sample SD (`ddof = 1`), standard error, minimum-mean `best`, Breiman et al. (1984) `one_se` rule (`larger_is_simpler` both ways), boundary `edge` flag, string settings, `chi2 = None`, and `NaN` fold warning | Mathematics | 1e-14 |
+| `crossval.cv_task`, `crossval.cross_validate` | closed-form weighted linear ridge regression held-out score, raw χ², per-group breakdown, and `m = 2` complex-visibility residual accounting (`unit_scale = None`); control: unmasked data leakage selects zero regularization on pure noise | Mathematics, statistics | < 1e-5 |
+
 

@@ -208,7 +208,7 @@ def test_normalised_flux_is_a_dense_gaussian(written):
 
 
 @pytest.mark.parametrize("per,poly_order", [("dataset", 0), ("station", 0), ("station", 1)])
-@pytest.mark.validates("virgil.likelihood.flux_scale_posterior", roots=["mathematics"])
+@pytest.mark.validates("virgil.likelihood.flux_scale_posterior", roots=["mathematics"], headline="max_dmean_over_sd")
 def test_flux_scale_posterior_is_the_conjugate_gaussian(written, per, poly_order):
     """Per group, data = A w + noise with A = [t, t x, ...] (t the template
     over its group mean) and prior w ~ N((mu, 0, ...), diag(s^2, (tau mu)^2,
@@ -384,7 +384,8 @@ def prior_reference(tables, params, widths):
     return out
 
 
-@pytest.mark.validates("virgil.observables.DifferentialPhase", roots=["mathematics"])
+@pytest.mark.slow
+@pytest.mark.validates("virgil.observables.DifferentialPhase", roots=["mathematics"], tier="B")
 def test_differential_phase_with_finite_priors_is_a_dense_gaussian(written):
     tables, path = written
     base = OIData(str(path))

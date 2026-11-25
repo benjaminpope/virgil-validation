@@ -1,0 +1,81 @@
+{
+ "case": "I-sim-24",
+ "comparison": "imaging",
+ "code": "virgil",
+ "config": "matched",
+ "threads": 1,
+ "size": "full",
+ "status": "ok",
+ "t_process": 0.768352644998231,
+ "t_calib": 0.26411646300402936,
+ "t_import": 3.9894548510055756,
+ "t_load": 0.8963332249986706,
+ "t_init": null,
+ "t_cold": 0.5986872990033589,
+ "t_warm": [
+  9.12857599905692e-05,
+  0.00016479046025779097,
+  0.00010828332015080377,
+  9.484909998718648e-05,
+  0.0001375615200959146
+ ],
+ "peak_footprint_mb": 1242.024,
+ "peak_rss_mb": 1242.024,
+ "baseline_mb": null,
+ "cpu_ratio": 1.122956816356865,
+ "flags": [],
+ "n_data": 312,
+ "n_param": 576,
+ "iterations": {
+  "calls": 50
+ },
+ "accuracy": {
+  "per_call_calls": 50,
+  "value_at_start": 2855667.8509764243
+ },
+ "settings": {
+  "case": "I-sim-24",
+  "task": "per_eval",
+  "reps": 5,
+  "size": "full",
+  "calls": 50,
+  "run": "r2",
+  "jax_cache": "cold",
+  "device": "gpu",
+  "gpu": "NVIDIA A100-SXM4-80GB",
+  "method": null
+ },
+ "provenance": {
+  "vv_commit": null,
+  "vv_dirty": false,
+  "virgil_pin": "09b268521072a83f73bc0a77defa6485db270c7b",
+  "versions": {
+   "virgil-astro": null,
+   "jax": "0.12.0.1",
+   "jaxlib": "0.12.0.1",
+   "numpyro": "0.22.0",
+   "pmoired": "26.10.1",
+   "ehtim": null,
+   "numpy": "2.5.4",
+   "scipy": "1.18.1",
+   "arviz": null,
+   "astropy": "8.0.2"
+  },
+  "python": "3.12.7",
+  "macos": "",
+  "chip": "AMD EPYC 7543 32-Core Processor",
+  "cpu_count": 64,
+  "thread_env": {
+   "OMP_NUM_THREADS": "1",
+   "OPENBLAS_NUM_THREADS": "1",
+   "VECLIB_MAXIMUM_THREADS": "1",
+   "MKL_NUM_THREADS": "1",
+   "NUMEXPR_NUM_THREADS": "1",
+   "XLA_FLAGS": "--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1 --xla_cpu_parallel_codegen_split_count=1 --xla_cpu_use_xnnpack=false --xla_cpu_enable_concurrency_optimized_scheduler=false",
+   "JAX_PLATFORMS": "cuda",
+   "JULIA_NUM_THREADS": "1"
+  },
+  "data_manifest_sha256": "9ff0c4e5432d399dab1b2db62ae15a4b3066af304147876be59a21020f540205"
+ },
+ "language": "python"
+}

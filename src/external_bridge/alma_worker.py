@@ -21,6 +21,7 @@ spec lists them; ``conjugate`` is the one choice the synthetic-MS test makes.
 Nothing here imports virgil.
 """
 
+import hashlib
 import json
 import os
 import pathlib
@@ -30,6 +31,9 @@ import numpy as np
 
 C = 299792458.0
 MAS = np.pi / 180 / 3600 / 1000
+SIMULATE_NOISE_SEED = (
+    int.from_bytes(hashlib.sha256(b"virgil-validation/alma_worker/simulate_ms").digest()[:4], "big") & 0x7FFFFFFF
+)
 
 # Measures data live inside the venv (scripts/setup_external.sh writes this file)
 _site = pathlib.Path(sys.executable).parents[1] / "casasiteconfig.py"
@@ -105,6 +109,8 @@ def simulate_ms(task):
     cl.done()
     sm.predict(complist=clpath)
     if noise > 0:
+        seed = int(task.get("seed", SIMULATE_NOISE_SEED))
+        sm.setseed(seed=seed)
         sm.setnoise(mode="simplenoise", simplenoise=f"{noise}Jy")
         sm.corrupt()
     sm.done()

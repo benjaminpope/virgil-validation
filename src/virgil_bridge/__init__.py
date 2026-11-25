@@ -202,8 +202,10 @@ def fit_scene(scene, data, start=None):
     # flat_values gives them (array-valued paths since virgil#135)
     cov = np.asarray(
         laplace_cov(
-            flat_values(scene, result.values), list(scene.truth), data,
+            flat_values(scene, result.values),
+            list(scene.truth),
             result.model,
+            data,
         )
     )
     return result, cov

@@ -220,3 +220,17 @@ def test_the_docs_page_has_the_results_block_is_in_the_nav_and_links_no_design_n
     assert rep.BEGIN in page and rep.END in page and "imaging/imlup_maxent.md" in (root / "mkdocs.yml").read_text()
     assert ".md)" not in "".join(l for l in page.splitlines() if "design/" in l) and "](design/" not in page and "(../../design" not in page
     assert rep.splice(page, "# T\n\nbody").count("body") == 1
+
+
+def test_the_report_reads_an_item_6_failure_from_the_grid_fits(tmp_path):
+    """The fail-fast sweep record has a grid table without m or g, and none of the later fields: the report still builds and shows kkt_w."""
+    run = make_run(tmp_path / "run", sweep=dict(unconverged_fits=[dict(weight=1.0, kkt_w=8e-4)], status="failed"))
+    path = run / dict(rep.STAGES)["sweep"]
+    rec = json.loads(path.read_text())
+    for key in ("crossings", "crossings_w_over_s2", "weight", "w_over_s2", "weight_band", "m", "g", "g_se", "h", "n_secant"):
+        rec.pop(key)
+    for p in rec["points"]:
+        p.pop("m"), p.pop("g")
+    path.write_text(json.dumps(rec))
+    md = rep.build(run)
+    assert "record incomplete" not in md and "FAIL:" in md and "5e-05" in md

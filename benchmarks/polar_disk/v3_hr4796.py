@@ -1,4 +1,4 @@
-"""V3a: HR 4796 ALMA visibilities, vis-r's example, against PolarDisk.
+"""V3a: HR 4796 ALMA visibilities, vis-r's example, against MultipoleDisk.
 
 Data: vis-r's ``data/hr4796.selfcal.npy`` (drgmk/vis-r, 12.9 MB, 321 322 complex
 visibilities, one SPW group; fetched with
@@ -13,7 +13,7 @@ their MCMC, reproduced below. These are NOT numbers read from the RASTI paper
 Same procedure as vis-r's ``examples/hello_world.py``: reweight so the null
 model has chi^2 = N, bin in (u, v) with ``size_arcsec`` = 4, Gaussian ring
 (dra, ddec, PA, inc, flux, r0, dr, dz) with the vertical Gaussian factor
-exp(-0.5 (2 pi dz r0 sin(i) u_minor)^2). PolarDisk has no scale height, so for
+exp(-0.5 (2 pi dz r0 sin(i) u_minor)^2). MultipoleDisk has no vertical Gaussian scale height, so for
 the virgil model the harness multiplies by the same factor (as in V1/A4).
 
 CONVENTION. vis-r's (dra, ddec) is a phase rotation exp(+2 pi i (u dra + v ddec)) of
@@ -48,7 +48,7 @@ from common import save
 from crosscheck import radial as R
 from external_bridge.safe_load import load_object_npy
 from external_bridge.radial_codes import quiet
-from virgil import GaussianRing, PolarDisk
+from virgil import GaussianRing, MultipoleDisk
 
 DATA = pathlib.Path(os.environ.get("V3_DATA", pathlib.Path.home() / "data" / "polar_disk_v3"))
 ARCSEC = np.pi / 180 / 3600
@@ -94,9 +94,9 @@ def virgil_model(u, v):
 
     @jax.jit
     def model(p):
-        disk = PolarDisk(GaussianRing(p[5] * 1e3, p[6] * 1e3), inc=p[3], pa=p[2],
-                         dra=-p[0] * 1e3, ddec=-p[1] * 1e3, n_r=128)  # sign: see CONVENTION in the docstring
-        vis = p[4] * disk.model(uj, vj, wl)  # PolarDisk is unit flux: the flux is the component weight
+        disk = MultipoleDisk(GaussianRing(p[5] * 1e3, p[6] * 1e3), inc=p[3], pa=p[2],
+                             dra=-p[0] * 1e3, ddec=-p[1] * 1e3, n_r=128)  # sign: see CONVENTION in the docstring
+        vis = p[4] * disk.model(uj, vj, wl)  # MultipoleDisk is unit flux: the flux is the component weight
         urot = uj * jnp.cos(jnp.deg2rad(p[2])) - vj * jnp.sin(jnp.deg2rad(p[2]))
         return vis * jnp.exp(-0.5 * jnp.square(p[7] * p[5] * jnp.sin(jnp.deg2rad(p[3])) * urot * ARCSEC * 2 * jnp.pi))
 

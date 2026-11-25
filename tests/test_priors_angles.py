@@ -123,9 +123,10 @@ def polar_integral(f, r_max=8.0):
     return integrate.dblquad(lambda r, t: r * f(r, t), 0, 2 * np.pi, 0, r_max, epsabs=1e-10)[0]
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("kw", [dict(), dict(mean=40.0, kappa=3.0), dict(mean=40.0, kappa=3.0, axial=True)],
                          ids=["uniform", "von-mises", "axial"])
-@pytest.mark.validates("virgil.angles.AngleVector", roots=["mathematics", "statistics"])
+@pytest.mark.validates("virgil.angles.AngleVector", roots=["mathematics", "statistics"], tier="B")
 def test_angle_vector_density_and_marginal(kw):
     """p(v) normalised over the plane; the angle's marginal is the stated
     density (uniform, von Mises, or von Mises of 2t), for two ring widths."""
@@ -208,7 +209,8 @@ def max_likelihood(data, template, paths, start):
     return res.x
 
 
-@pytest.mark.validates("virgil.fitting.fit", roots=["mathematics"])
+@pytest.mark.slow
+@pytest.mark.validates("virgil.fitting.fit", roots=["mathematics"], tier="B")
 def test_map_with_flat_coordinate_priors_is_the_likelihood_maximum(binary_file):
     """LogUniform priors on the diameter and the companion flux: their
     densities 1/x would pull a fit in x towards zero; in log x they are
@@ -227,7 +229,8 @@ def test_map_with_flat_coordinate_priors_is_the_likelihood_maximum(binary_file):
     assert np.max(np.abs(pulls)) < 1e-3
 
 
-@pytest.mark.validates("virgil.fitting.fit", roots=["mathematics"], kind="control")
+@pytest.mark.slow
+@pytest.mark.validates("virgil.fitting.fit", roots=["mathematics"], kind="control", tier="B")
 def test_a_gaussian_prior_moves_the_map(binary_file):
     """A Normal prior has no flat coordinate: it enters the loss, and a
     tight one pulls the MAP away from the likelihood maximum."""

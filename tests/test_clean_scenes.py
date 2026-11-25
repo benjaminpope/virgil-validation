@@ -117,7 +117,7 @@ def check_residual_flat(case):
     assert peak < RESIDUAL_PEAK
 
 
-@pytest.mark.validates("virgil.imaging.clean", roots=["mathematics"])
+@pytest.mark.validates("virgil.imaging.clean", roots=["mathematics"], headline="binary_flux_error_4_1.2")
 def test_clean_recovers_positions_and_fluxes(case):
     check_positions_and_fluxes(case)
 

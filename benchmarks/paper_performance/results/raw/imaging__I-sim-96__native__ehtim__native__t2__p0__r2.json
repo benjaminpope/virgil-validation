@@ -1,0 +1,112 @@
+{
+ "case": "I-sim-96",
+ "comparison": "imaging",
+ "code": "ehtim",
+ "config": "native",
+ "threads": 2,
+ "size": "full",
+ "status": "ok",
+ "t_process": 0.3621615330048371,
+ "t_calib": 0.255891815002542,
+ "t_import": 1.7971537279954646,
+ "t_load": 0.0034991039865417406,
+ "t_init": null,
+ "t_cold": 18.92899259000842,
+ "t_warm": [
+  18.87536466399615,
+  19.014129909002804,
+  18.887672428012593,
+  18.89308287500171,
+  19.197074092007824
+ ],
+ "peak_footprint_mb": 345.192,
+ "peak_rss_mb": 345.192,
+ "baseline_mb": null,
+ "cpu_ratio": 2.931492910842891,
+ "flags": [
+  "threads_not_held"
+ ],
+ "n_data": 312,
+ "n_param": 9216,
+ "iterations": {},
+ "accuracy": {
+  "flux": 1.0193550809833098,
+  "score": {
+   "J": 3122.4622495108233,
+   "half_chi2_amp": 3020.5486695736363,
+   "half_chi2_cp": 23.87039550950943,
+   "tv2": 0.00010405757923690368,
+   "flux": 1.0193550809833098,
+   "n_amp": 234,
+   "n_cp": 78,
+   "ncc_registered": 0.8547733485746064,
+   "ncc_shift_rc": [
+    3,
+    -3
+   ],
+   "ncc_unregistered": 0.6378466339028684,
+   "rms_rel_beam": 0.09641217575794221,
+   "beam_mas": 1.5448696219530984
+  }
+ },
+ "settings": {
+  "case": "I-sim-96",
+  "task": "native",
+  "reps": 5,
+  "size": "full",
+  "native": {
+   "source": "examples/example_im_closure.py of eht-imaging v1.3.2 (commit c8c7a89ea96da0c3f0217e95c41ce8d3e7ca8765), https://github.com/achael/eht-imaging/blob/v1.3.2/examples/example_im_closure.py",
+   "recipe": "three rounds; data weights amp 50 / cphase 100 (rounds 1-2) then amp 10 / cphase 20; regularisers simple=1 (round 1) then tv=1; flux 100; cm 50; maxit=500; each later round starts from the previous image blurred with obs.res() (then res/2); Gaussian prior = the common start; ttype=direct",
+   "amp": [
+    50,
+    10
+   ],
+   "cphase": [
+    100,
+    20
+   ],
+   "simple": 1,
+   "tv": 1,
+   "flux": 100,
+   "cm": 50,
+   "maxit": 500,
+   "notes": "the example's imgr.maxi_next = 1000 is a misspelt attribute (no effect), so maxit stays 500; averaging of closure quantities (avg_time) is not applied because the simulated snapshots are already one per time"
+  },
+  "run": "r2",
+  "jax_cache": "cold",
+  "method": "native"
+ },
+ "provenance": {
+  "vv_commit": null,
+  "vv_dirty": false,
+  "virgil_pin": "09b268521072a83f73bc0a77defa6485db270c7b",
+  "versions": {
+   "virgil-astro": null,
+   "jax": null,
+   "jaxlib": null,
+   "numpyro": null,
+   "pmoired": null,
+   "ehtim": "1.3.2",
+   "numpy": "2.5.3",
+   "scipy": "1.18.1",
+   "arviz": null,
+   "astropy": "8.0.1"
+  },
+  "python": "3.12.7",
+  "macos": "",
+  "chip": "AMD EPYC 7543 32-Core Processor",
+  "cpu_count": 64,
+  "thread_env": {
+   "OMP_NUM_THREADS": "2",
+   "OPENBLAS_NUM_THREADS": "2",
+   "VECLIB_MAXIMUM_THREADS": "2",
+   "MKL_NUM_THREADS": "2",
+   "NUMEXPR_NUM_THREADS": "2",
+   "XLA_FLAGS": "--xla_cpu_multi_thread_eigen=true intra_op_parallelism_threads=2",
+   "JAX_PLATFORMS": "cpu",
+   "JULIA_NUM_THREADS": "2"
+  },
+  "data_manifest_sha256": "9ff0c4e5432d399dab1b2db62ae15a4b3066af304147876be59a21020f540205"
+ },
+ "language": "python"
+}

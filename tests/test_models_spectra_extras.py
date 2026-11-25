@@ -79,8 +79,9 @@ def squashed(cloud, ratio, pa, dra, ddec):
                      along * np.cos(p) - across * np.sin(p) + ddec, cloud.weight)
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("u_ld", [(), (0.5,), (0.6, 0.15)], ids=["uniform", "linear", "quadratic"])
-@pytest.mark.validates("virgil.models.EllipticalLimbDarkenedDisk", roots=["mathematics"])
+@pytest.mark.validates("virgil.models.EllipticalLimbDarkenedDisk", roots=["mathematics"], tier="B")
 def test_elliptical_limb_darkened_disk_is_a_squashed_disk(uvw, u_ld):
     u, v, wl = uvw
     diam, ratio, pa, dra, ddec = 3.0, 0.7, 35.0, 0.4, -0.2

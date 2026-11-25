@@ -4,7 +4,7 @@ This page checks aperture-masking simulation and fitting against closed-form
 visibilities and injected truth. The setup is a NIRISS-like 7-hole mask
 (0.8 m circular holes on the 1.32 m hexagonal grid) at 4.8 µm with 30 mas
 pixels. Each scene is a point cloud imaged source by source
-(`tests/test_nrm.py`).
+(`tests/test_nrm.py`, `tests/test_nrm_calibrated.py`, `tests/test_nrm_injection.py`).
 
 | Check | Reference | Tag | Agreement |
 | --- | --- | --- | --- |

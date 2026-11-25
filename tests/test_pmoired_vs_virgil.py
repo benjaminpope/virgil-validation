@@ -115,7 +115,8 @@ def pm_egauss(name, fwhm, ratio, pa, flux=1.0, dra=0.0, ddec=0.0):
 # ------------------------------------------------------------ scenes
 
 
-@pytest.mark.validates("virgil.models.BinaryModelCartesian", roots=["pmoired"])
+@pytest.mark.slow
+@pytest.mark.validates("virgil.models.BinaryModelCartesian", roots=["pmoired"], headline="max_abs_dV2", tier="B")
 def test_binary(vlti_file):
     scene = vm.BinaryModelCartesian(4.97, -3.36, 0.05)
     params = {**pm_point("A"), **pm_point("B", 0.05, 4.97, -3.36)}
@@ -123,7 +124,7 @@ def test_binary(vlti_file):
     assert cp_max > 5 and dv2 < 1e-12 and dcp < 1e-9
 
 
-@pytest.mark.validates("virgil.models.BinaryModelAngular", roots=["pmoired"])
+@pytest.mark.validates("virgil.models.BinaryModelAngular", roots=["pmoired"], headline="max_abs_dV2")
 def test_binary_angular(vlti_file):
     sep, pa = 6.0, 124.0
     scene = vm.BinaryModelAngular(sep, pa, 0.05)
@@ -156,7 +157,7 @@ def _east_north(sep, pa):
     return sep * np.sin(np.deg2rad(pa)), sep * np.cos(np.deg2rad(pa))
 
 
-@pytest.mark.validates("virgil.models.UniformDisk", "virgil.models.PointSource", "virgil.models.System", roots=["pmoired"])
+@pytest.mark.validates("virgil.models.UniformDisk", "virgil.models.PointSource", "virgil.models.System", roots=["pmoired"], headline="max_abs_dV2")
 def test_disk_star_and_companion(vlti_file):
     scene = vm.System(
         star=vm.UniformDisk(1.8), comp=vm.PointSource(0.02, -12.0, 8.0)
@@ -166,7 +167,7 @@ def test_disk_star_and_companion(vlti_file):
     assert dv2 < 1e-12 and dcp < 1e-9
 
 
-@pytest.mark.validates("virgil.models.EllipticalGaussian", "virgil.models.System", roots=["pmoired"])
+@pytest.mark.validates("virgil.models.EllipticalGaussian", "virgil.models.System", roots=["pmoired"], headline="max_abs_dV2")
 def test_star_and_elliptical_envelope(vlti_file):
     scene = vm.System(
         star=vm.PointSource(), env=vm.EllipticalGaussian(4.0, 0.5, 60.0, 0.4, 0.7, -0.3)
@@ -184,7 +185,7 @@ def test_resolved_flux(vlti_file):
     assert dv2 < 1e-12
 
 
-@pytest.mark.validates("virgil.models.BinaryModelCartesian", roots=["pmoired"])
+@pytest.mark.validates("virgil.models.BinaryModelCartesian", roots=["pmoired"], headline="max_abs_dV2")
 def test_masking_binary(mask_file):
     """The same mapping at masking scales: 150 mas, 7 holes."""
     scene = vm.BinaryModelCartesian(124.4, -83.9, 0.05)
@@ -220,7 +221,7 @@ def _random_scene(seed):
 
 
 @pytest.mark.parametrize("seed", range(3))
-@pytest.mark.validates("virgil.models.System", "virgil.models.PointSource", "virgil.models.GaussianDisk", "virgil.models.EllipticalGaussian", "virgil.models.UniformDisk", roots=["pmoired"])
+@pytest.mark.validates("virgil.models.System", "virgil.models.PointSource", "virgil.models.GaussianDisk", "virgil.models.EllipticalGaussian", "virgil.models.UniformDisk", roots=["pmoired"], headline="max_abs_dV2")
 def test_random_constellation(vlti_file, seed):
     """24 points, Gaussians, elliptical Gaussians and disks at random
     positions and fluxes: one dictionary of 24 PMOIRED components."""
@@ -262,7 +263,7 @@ def _pmoired_rim(amps=(), pas=()):
     return params
 
 
-@pytest.mark.validates("virgil.models.ModulatedGaussianRim", roots=["pmoired"], property="profile")
+@pytest.mark.validates("virgil.models.ModulatedGaussianRim", roots=["pmoired"], property="profile", headline="max_abs_dV2")
 def test_unmodulated_rim_matches_pmoired_blurred_ring_profile(vlti_file):
     """An unmodulated, inclined rim blurred in its own plane is a ring with
     the Bessel-I0 radial profile: PMOIRED and virgil agree exactly. This
@@ -282,7 +283,8 @@ class _Cloud:
         return sky.visibility(self.cloud, u, v, wl)
 
 
-@pytest.mark.validates("virgil.models.ModulatedGaussianRim", roots=["pmoired", "mathematics"], kind="control")
+@pytest.mark.slow
+@pytest.mark.validates("virgil.models.ModulatedGaussianRim", roots=["pmoired", "mathematics"], kind="control", tier="B")
 def test_modulated_rim_definitions_differ(vlti_file, request):
     """With modulation the two packages define different things, both
     exactly. PMOIRED multiplies the radial profile by (1 + A cos m phi);
@@ -310,7 +312,8 @@ def test_modulated_rim_definitions_differ(vlti_file, request):
     assert_recorded_once(request, "max_abs_dV2", "max_abs_dCP_deg", "max_abs_CP_deg")
 
 
-@pytest.mark.validates("virgil.models.ModulatedGaussianRim", roots=["pmoired"], property="modulation_sense", headline="max_abs_dCP_deg")
+@pytest.mark.slow
+@pytest.mark.validates("virgil.models.ModulatedGaussianRim", roots=["pmoired"], property="modulation_sense", headline="max_abs_dCP_deg", tier="B")
 def test_modulation_sense_agrees_with_pmoired(vlti_file, request):
     """The definitions differ only at O(m^2 sigma^2 / r0^2) (D-code above),
     so the sense of the modulation can still be checked against PMOIRED:

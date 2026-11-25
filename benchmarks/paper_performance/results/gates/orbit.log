@@ -1,0 +1,56 @@
+wrote /Users/benpope/.cache/virgil-bench/data/orbit/gates/gate_in.json
+wrote /Users/benpope/.cache/virgil-bench/data/orbit/gates/octofitter_out.json
+wrote /Users/benpope/.cache/virgil-bench/data/orbit/gates/virgil_out.json
+gate1_virgil_vs_crosscheck_max_abs_mas: 2.285838185400735e-12
+gate1_virgil_pass: True
+gate2_virgil_delta_loglike: -2101.3838133415065
+gate2_neutral_delta_loglike: -2101.3838133419954
+gate2_virgil_abs_diff: 4.888534022029489e-10
+gate2_virgil_rel_diff: 2.3263403815102537e-13
+gate2_virgil_pass: True
+gate3_virgil_indep_delta_loglike: -106909.42067250556
+gate3_virgil_indep_rel_diff_vs_neutral: 0.02383627411791079
+gate3_virgil_default_delta_loglike: -88011.17398753567
+gate3_virgil_default_rel_diff_vs_neutral: 0.19639153426799552
+gate3_neutral_delta_loglike: -109519.96866703808
+gate3_neutral_chi2: [1436.9069482414316, 220476.8442823176]
+gate1_octofitter_vs_crosscheck_max_abs_mas: 7.815970093361102e-14
+gate1_octofitter_pass: True
+octofitter_mapping: Octofitter ω, Ω, M0 given directly in radians; no sign or offset applied
+gate2_octofitter_delta_loglike: -2101.383813341989
+gate2_octofitter_rel_diff: 3.0296525898738187e-15
+gate2_octofitter_pass: True
+gate3_octofitter_delta_loglike: -109519.96866703816
+gate3_octofitter_rel_diff_vs_neutral: 7.972198351849877e-16
+gate4_reader: {'vis2': 0.0, 'dvis2': 0.0, 'cp_deg': 7.105427357601002e-15, 'dcp_deg': 0.0, 'u_m': 1.4210854715202004e-14, 'v_m': 7.105427357601002e-15, 'tri_u': 7.105427357601002e-15, 'tri_v': 7.105427357601002e-15, 'index_zero': 0, 'index_out_of_range': 0, 'pass': True}
+
+[ Info: [bench] observing_geometry = false (user)
+[ Info: [bench] barycentric_lighttime = false (user)
+[ Info: [bench] observing_geometry = false (user)
+[ Info: [bench] barycentric_lighttime = false (user)
+[ Info: [bench] observing_geometry = false (user)
+[ Info: [bench] barycentric_lighttime = false (user)
+[ Info: [bench] observing_geometry = false (user)
+[ Info: [bench] barycentric_lighttime = false (user)
+[ Info: [bench] observing_geometry = false (user)
+[ Info: [bench] barycentric_lighttime = false (user)
+[ Info: [bench] observing_geometry = false (user)
+[ Info: [bench] barycentric_lighttime = false (user)
+[ Info: [bench] observing_geometry = false (user)
+[ Info: [bench] barycentric_lighttime = false (user)
+[ Info: [bench] observing_geometry = false (user)
+[ Info: [bench] barycentric_lighttime = false (user)
+[ Info: [bench] observing_geometry = false (user)
+[ Info: [bench] barycentric_lighttime = false (user)
+[ Info: [bench] observing_geometry = false (user)
+[ Info: [bench] barycentric_lighttime = false (user)
+[ Info: [bench] observing_geometry = false (user)
+[ Info: [bench] barycentric_lighttime = false (user)
+[ Info: [bench] observing_geometry = false (user)
+[ Info: [bench] barycentric_lighttime = false (user)
+[ Info: [bench] observing_geometry = false (user)
+[ Info: [bench] barycentric_lighttime = false (user)
+/Users/benpope/.cache/virgil-bench/venv/lib/python3.12/site-packages/zodiax/stats.py:24: SyntaxWarning: invalid escape sequence '\m'
+  Calculates the z-score $(\mu - x) / \sigma$ of a value given a mean and standard
+/Users/benpope/.cache/virgil-bench/venv/lib/python3.12/site-packages/zodiax/stats.py:46: SyntaxWarning: invalid escape sequence '\m'
+  Calculates the squared Mahalanobis distance $(\mu - x)^\top\Sigma^{-1}(\mu - x)$

@@ -116,7 +116,8 @@ def test_gains_match_a_dense_gaussian_on_v2(v2_file, groups):
     assert abs(got - want) < 1e-9 * max(1.0, abs(want))
 
 
-@pytest.mark.validates("virgil.gains.gain_modes", "virgil.likelihood.model_loglike", roots=["mathematics"])
+@pytest.mark.slow
+@pytest.mark.validates("virgil.gains.gain_modes", "virgil.likelihood.model_loglike", roots=["mathematics"], tier="B")
 def test_supplied_modes_are_in_sample_order(v2_file):
     """Supplied modes, one value per sample in the order of the file's
     (row, channel) samples (virgil's ``u``)."""
@@ -184,13 +185,13 @@ def gauss_newton(d, x, y, at=0.0, h=1e-7):
 
 
 @pytest.mark.parametrize("flux", [0.0, 0.01], ids=["no companion", "companion"])
-@pytest.mark.validates("virgil.grid_fit.linear_flux_grid", roots=["mathematics"])
+@pytest.mark.validates("virgil.grid_fit.linear_flux_grid", roots=["mathematics"], headline="max_abs_dlogB_linear_model")
 def test_linear_flux_and_gaussian_prior_evidence(tmp_path, flux):
     """Closed form (no refinement): f = -(g.r0)/(g.g), sigma = (g.g)^-1/2,
     and log B by quadrature over f of the linearised likelihood times the
     prior."""
     d, data = flux_file(tmp_path, flux)
-    out = linear_flux_grid(data, vm.BinaryModelCartesian, {"dra": XS, "ddec": YS, "flux": [1e-3]}, prior=PRIOR)
+    out = linear_flux_grid(vm.BinaryModelCartesian, data, {"dra": XS, "ddec": YS, "flux": [1e-3]}, prior=PRIOR)
     m, sd = PRIOR_MEAN, PRIOR_SD
     worst_f = worst_b = 0.0
     for i, x in enumerate(XS):
@@ -218,7 +219,7 @@ def test_gaussian_prior_evidence_is_the_true_one_without_a_companion(tmp_path):
     nonlinear in f), so the closed-form log B is close to the integral of
     the true likelihood (measured 1.5e-3)."""
     d, data = flux_file(tmp_path, 0.0)
-    out = linear_flux_grid(data, vm.BinaryModelCartesian, {"dra": XS, "ddec": YS, "flux": [1e-3]}, prior=PRIOR)
+    out = linear_flux_grid(vm.BinaryModelCartesian, data, {"dra": XS, "ddec": YS, "flux": [1e-3]}, prior=PRIOR)
     m, sd = PRIOR_MEAN, PRIOR_SD
     worst = 0.0
     for i, x in enumerate(XS):
@@ -234,12 +235,13 @@ def test_gaussian_prior_evidence_is_the_true_one_without_a_companion(tmp_path):
     assert worst < 0.01
 
 
-@pytest.mark.validates("virgil.grid_fit.linear_flux_grid", roots=["mathematics"])
+@pytest.mark.slow
+@pytest.mark.validates("virgil.grid_fit.linear_flux_grid", roots=["mathematics"], tier="B")
 def test_gauss_newton_refinement_reaches_the_optimum(tmp_path):
     """A bright companion (0.3): with 5 Gauss-Newton steps, the flux at each
     position is the minimiser of our own chi-squared."""
     d, data = flux_file(tmp_path, 0.3)
-    flux = np.asarray(linear_flux_grid(data, vm.BinaryModelCartesian, {"dra": XS, "ddec": YS, "flux": [1e-3]},
+    flux = np.asarray(linear_flux_grid(vm.BinaryModelCartesian, data, {"dra": XS, "ddec": YS, "flux": [1e-3]},
                                        n_iter=5)[0])
     worst = 0.0
     for i, x in enumerate(XS):
@@ -254,44 +256,99 @@ def test_gauss_newton_refinement_reaches_the_optimum(tmp_path):
 # ----------------------------------------------------- closure-phase offsets
 
 
-def closure_offsets_reference(d, s, baseline=None, triangle=None, modes=None):
-    """Δ log-likelihood of closure-phase offsets, written from virgil's docs
-    (virgil.gains.ClosureOffsets, likelihood._whiten): per frame, the sines
-    s = sin Δ divided by σ and projected on an orthonormal basis Q of the
-    column space of the triangle matrix T of each channel, are Gaussian
-    with covariance Qᵀ R Q per channel (R = T Tᵀ / 3), and offsets common to
-    a frame's channels add modes: T e per baseline, one per triangle, or
-    given shapes; Δ = log N(y; 0, Σ0 + V Vᵀ) - log N(y; 0, Σ0)."""
+def closure_offsets_reference(
+    d,
+    delta,
+    baseline=None,
+    triangle=None,
+    modes=None,
+    scale_penalty=True,
+    phi_offset_baseline=None,
+    phi_offset_triangle=None,
+    phi_offset_modes=None,
+):
+    """Δ log-likelihood of closure-phase offsets from virgil's documented model
+    (``virgil.gains.ClosureOffsets``, ``docs/conventions.md``): per (frame,
+    channel), ``s = sin Δ`` divided by ``σ`` and projected onto an orthonormal
+    basis ``Q`` of the column space of the triangle matrix ``T`` is Gaussian
+    with base covariance ``Qᵀ R Q`` (``R = T Tᵀ / 3``), while per-frame and
+    frame-spanning offset columns ``M`` add ``(P M)(P M)ᵀ`` across the full
+    observation using ``widths_for(terms)`` when ``phi_offset_<group>`` noise
+    terms are passed. When ``scale_penalty=True`` (the 0.4.2 default), each
+    closure phase's periodic wrap-penalty row ``2 sin²(Δ_i / 2)`` divides by
+    ``hypot(σ_i, σ_off,i)`` at the *nominal* ``widths`` (``diag(M_nom M_nomᵀ)_i``)."""
     sig = d["dcp"]
+    s = np.sin(delta)
+    q_pen = 2.0 * np.sin(0.5 * delta) ** 2
     nrow, nw = s.shape
-    total = 0.0
+    n_tot = nrow * nw
+
+    def _build_columns(b_w, t_w, m_scale):
+        cols = []
+        for mjd in np.unique(d["t3_mjd"]):
+            rows = np.flatnonzero(d["t3_mjd"] == mjd)
+            T = ours.triangle_matrix(d["t3_sta"][rows])
+            if baseline is not None:
+                for b in range(T.shape[1]):
+                    full = np.zeros((nrow, nw))
+                    full[rows, :] = (b_w * T[:, b])[:, None]
+                    cols.append(full.ravel())
+            if triangle is not None:
+                for r in rows:
+                    full = np.zeros((nrow, nw))
+                    full[r, :] = t_w
+                    cols.append(full.ravel())
+        if modes is not None:
+            for mode in modes:
+                cols.append(m_scale * np.asarray(mode, float).ravel())
+        return np.column_stack(cols) if cols else np.zeros((n_tot, 0))
+
+    M_nom = _build_columns(
+        0.0 if baseline is None else float(baseline),
+        0.0 if triangle is None else float(triangle),
+        1.0,
+    )
+    M_fit = _build_columns(
+        0.0 if baseline is None else float(baseline if phi_offset_baseline is None else phi_offset_baseline),
+        0.0 if triangle is None else float(triangle if phi_offset_triangle is None else phi_offset_triangle),
+        1.0 if phi_offset_modes is None else float(phi_offset_modes),
+    )
+
+    p_blocks, y_parts, s0_blocks = [], [], []
     for mjd in np.unique(d["t3_mjd"]):
         rows = np.flatnonzero(d["t3_mjd"] == mjd)
         T = ours.triangle_matrix(d["t3_sta"][rows])
-        R = T @ T.T / 3
+        R = T @ T.T / 3.0
         left, values, _ = np.linalg.svd(T, full_matrices=False)
         Q = left[:, values > 1e-9 * values.max()]
-        k = Q.shape[1]
-        P = [Q.T @ np.diag(1 / sig[rows, c]) for c in range(nw)]
-        y = np.concatenate([P[c] @ s[rows, c] for c in range(nw)])
-        S0 = np.zeros((k * nw, k * nw))
         for c in range(nw):
-            S0[c * k:(c + 1) * k, c * k:(c + 1) * k] = Q.T @ R @ Q
-        cols = []
-        if baseline:
-            cols += [np.concatenate([P[c] @ (baseline * T[:, b]) for c in range(nw)]) for b in range(T.shape[1])]
-        if triangle:
-            for t in range(len(rows)):
-                e = np.zeros(len(rows))
-                e[t] = triangle
-                cols.append(np.concatenate([P[c] @ e for c in range(nw)]))
-        for mode in [] if modes is None else modes:
-            shape = mode.reshape(nrow, nw)
-            cols.append(np.concatenate([P[c] @ shape[rows, c] for c in range(nw)]))
-        V = np.array(cols).T
-        zero = np.zeros(y.size)
-        total += stats.multivariate_normal(zero, S0 + V @ V.T).logpdf(y) - stats.multivariate_normal(zero, S0).logpdf(y)
-    return total
+            idx = rows * nw + c
+            Pc = Q.T @ np.diag(1.0 / sig[rows, c])
+            y_parts.append(Pc @ s[rows, c])
+            s0_blocks.append(Q.T @ R @ Q)
+            p_row = np.zeros((Q.shape[1], n_tot))
+            p_row[:, idx] = Pc
+            p_blocks.append(p_row)
+
+    P_full = np.vstack(p_blocks)
+    y = np.concatenate(y_parts)
+    S0 = np.zeros((y.size, y.size))
+    pos = 0
+    for blk in s0_blocks:
+        kb = blk.shape[0]
+        S0[pos:pos + kb, pos:pos + kb] = blk
+        pos += kb
+
+    V = P_full @ M_fit
+    zero = np.zeros(y.size)
+    dlog = (
+        stats.multivariate_normal(zero, S0 + V @ V.T).logpdf(y)
+        - stats.multivariate_normal(zero, S0).logpdf(y)
+    )
+    if scale_penalty:
+        sigma_off_sq = np.sum(M_nom**2, axis=1).reshape(nrow, nw)
+        dlog += -0.5 * np.sum(q_pen**2 / (sig**2 + sigma_off_sq) - q_pen**2 / sig**2)
+    return float(dlog)
 
 
 @pytest.fixture(scope="module")
@@ -304,39 +361,195 @@ def cp_file(tmp_path_factory):
     vis = binary_vis(0.045, 6.2, -3.9)
     model_cp = (np.angle(vis(d["u1"], d["v1"], d["wl3"])) + np.angle(vis(d["u2"], d["v2_"], d["wl3"]))
                 - np.angle(vis(d["u1"] + d["u2"], d["v1"] + d["v2_"], d["wl3"])))
-    return d, OIData(str(path)), np.sin(model_cp - d["cp"]), vm.BinaryModelCartesian(6.2, -3.9, 0.045)
+    return d, OIData(str(path)), model_cp - d["cp"], vm.BinaryModelCartesian(6.2, -3.9, 0.045)
 
 
 @pytest.mark.parametrize(
     "kw",
-    [pytest.param(k, id=i, marks=pytest.mark.validates("virgil.gains.closure_offsets", "virgil.likelihood.model_loglike", roots=["mathematics"]))
+    [pytest.param(k, id=i, marks=pytest.mark.validates("virgil.gains.closure_offsets", "virgil.likelihood.model_loglike",
+                                                        roots=["mathematics"], headline="max_abs_dloglike"))
      for i, k in [("baseline", dict(baseline=0.02)), ("triangle", dict(triangle=0.03)),
                   ("both", dict(baseline=0.02, triangle=0.03))]],
 )
 def test_closure_offsets_match_a_dense_gaussian(cp_file, kw):
-    d, data, s, model = cp_file
-    got = float(model_loglike(model, data.with_closure_offsets(**kw))) - float(model_loglike(model, data))
-    want = closure_offsets_reference(d, s, **kw)
-    record("abs_dloglike", abs(got - want))
-    assert abs(got - want) < 1e-9 * max(1.0, abs(want))
+    d, data, delta, model = cp_file
+    base = float(model_loglike(model, data))
+    got_scaled = float(model_loglike(model, data.with_closure_offsets(**kw))) - base
+    want_scaled = closure_offsets_reference(d, delta, **kw, scale_penalty=True)
+    got_unscaled = float(model_loglike(model, data.with_closure_offsets(**kw, scale_penalty=False))) - base
+    want_unscaled = closure_offsets_reference(d, delta, **kw, scale_penalty=False)
+    err = record("max_abs_dloglike", max(abs(got_scaled - want_scaled), abs(got_unscaled - want_unscaled)))
+    assert abs(got_scaled - want_scaled) < 1e-11 * max(1.0, abs(want_scaled))
+    assert abs(got_unscaled - want_unscaled) < 1e-11 * max(1.0, abs(want_unscaled))
+    assert err < 1e-10
 
 
-@pytest.mark.validates("virgil.gains.closure_offsets", "virgil.likelihood.model_loglike", roots=["mathematics"])
+@pytest.mark.slow
+@pytest.mark.validates(
+    "virgil.gains.closure_offsets", "virgil.likelihood.model_loglike", roots=["mathematics"], headline="max_abs_dloglike",
+    tier="B",
+)
 def test_supplied_closure_offset_modes(cp_file):
-    """Supplied modes, one value per closure phase of ``data.phi`` (the
-    file's (row, channel) order), each within one frame."""
-    d, data, s, model = cp_file
-    nrow, nw = s.shape
+    """Supplied modes in ``data.phi`` sample order: both within-frame modes and
+    frame-spanning modes (``ClosureOffsets.spanning``), with and without wrap-penalty scaling."""
+    d, data, delta, model = cp_file
+    nrow, nw = delta.shape
     epochs = np.unique(d["t3_mjd"])
-    modes = np.zeros((2, nrow * nw))
+    within_modes = np.zeros((2, nrow * nw))
     for k, (epoch, scale) in enumerate([(epochs[0], None), (epochs[1], 0.03)]):
         rows = np.flatnonzero(d["t3_mjd"] == epoch)
         shape = np.zeros((nrow, nw))
         shape[rows, :] = np.random.default_rng(1).normal(size=(len(rows), nw)) * 0.02 if scale is None else scale
-        modes[k] = shape.ravel()
-    got = float(model_loglike(model, data.with_closure_offsets(modes=modes))) - float(model_loglike(model, data))
-    want = closure_offsets_reference(d, s, modes=modes)
-    assert abs(got - want) < 1e-9 * max(1.0, abs(want))
+        within_modes[k] = shape.ravel()
+    spanning_modes = np.random.default_rng(42).normal(scale=0.025, size=(2, nrow * nw))
+    assert data.with_closure_offsets(modes=within_modes).phase_offsets.spanning is None
+    assert data.with_closure_offsets(modes=spanning_modes).phase_offsets.spanning is not None
+
+    base = float(model_loglike(model, data))
+    worst = 0.0
+    for modes in (within_modes, spanning_modes):
+        for sp in (True, False):
+            got = float(model_loglike(model, data.with_closure_offsets(modes=modes, scale_penalty=sp))) - base
+            want = closure_offsets_reference(d, delta, modes=modes, scale_penalty=sp)
+            err = abs(got - want)
+            assert err < 1e-11 * max(1.0, abs(want))
+            worst = max(worst, err)
+    record("max_abs_dloglike", worst)
+
+
+@pytest.mark.slow
+@pytest.mark.validates(
+    "virgil.gains.ClosureOffsets",
+    "virgil.gains.closure_offsets",
+    "virgil.likelihood.model_loglike",
+    roots=["mathematics"],
+    headline="max_abs_dloglike_wrap",
+    tier="B",
+)
+def test_closure_offsets_wrap_boundary_near_pi(tmp_path):
+    """Across the +-180 deg phase-wrap cut (|Delta| ~ pi, where sin(Delta) ~ 0 and
+    q_pen = 2 sin^2(Delta / 2) ~ 2 carries the entire restoring penalty), both
+    scale_penalty=True and scale_penalty=False match the exact dense-Gaussian plus
+    periodic wrap reference and remain strictly 2*pi-periodic."""
+    from astropy.io import fits
+
+    path = tmp_path / "cp_wrap.fits"
+    simulate.observe(
+        path,
+        binary_vis(0.0, 0.0, 0.0),
+        UTS,
+        hour_angles_h=[-1.0, 1.0],
+        wavelengths=np.linspace(1.6e-6, 2.2e-6, 3),
+        dec_deg=-50.0,
+        sigma_v2=0.01,
+        sigma_cp_deg=5.0,
+        rng=np.random.default_rng(17),
+    )
+    rng = np.random.default_rng(18)
+    with fits.open(path, mode="update") as hdul:
+        t3phi = hdul["OI_T3"].data["T3PHI"]
+        # Place closure phases right across the +-180 deg branch cut (155..179.5 deg, signed)
+        signs = rng.choice([-1.0, 1.0], size=t3phi.shape)
+        hdul["OI_T3"].data["T3PHI"] = signs * rng.uniform(155.0, 179.5, size=t3phi.shape)
+        hdul.flush()
+
+    path_wrapped = tmp_path / "cp_wrap_plus_360.fits"
+    with fits.open(path) as hdul:
+        hdul["OI_T3"].data["T3PHI"] = hdul["OI_T3"].data["T3PHI"] + 360.0
+        hdul.writeto(path_wrapped)
+
+    d = ours.load(path)
+    data = OIData(str(path))
+    data_360 = OIData(str(path_wrapped))
+    model = vm.UniformDisk(0.01)  # model_cp == 0 everywhere, so Delta = -d["cp"] near +-pi
+    delta = -d["cp"]
+    assert np.min(np.abs(delta)) > 2.7  # genuinely in the far-hemisphere wrap regime
+
+    kw = dict(baseline=0.12, triangle=0.15)
+    base = float(model_loglike(model, data))
+    got_scaled = float(model_loglike(model, data.with_closure_offsets(**kw, scale_penalty=True))) - base
+    got_unscaled = float(model_loglike(model, data.with_closure_offsets(**kw, scale_penalty=False))) - base
+    want_scaled = closure_offsets_reference(d, delta, **kw, scale_penalty=True)
+    want_unscaled = closure_offsets_reference(d, delta, **kw, scale_penalty=False)
+
+    got_360 = float(model_loglike(model, data_360.with_closure_offsets(**kw, scale_penalty=True))) - float(
+        model_loglike(model, data_360)
+    )
+    wrap_periodicity_err = abs(got_scaled - got_360)
+    err = max(abs(got_scaled - want_scaled), abs(got_unscaled - want_unscaled), wrap_periodicity_err)
+
+    record("scaled_minus_unscaled_wrap_dloglike", got_scaled - got_unscaled)
+    record("max_abs_dloglike_wrap", err)
+    assert got_scaled - got_unscaled > 5.0  # wrap-penalty scaling changes log L by O(10+) nats near +-pi
+    assert err < 1e-11 * max(1.0, abs(want_scaled))
+
+
+@pytest.mark.validates(
+    "virgil.gains.ClosureOffsets",
+    "virgil.gains.closure_offsets",
+    "virgil.likelihood.model_loglike",
+    roots=["mathematics"],
+    headline="max_abs_dloglike_fitted_terms",
+)
+def test_closure_offsets_fitted_terms_scale_sine_covariance_while_wrap_uses_nominal_widths(cp_file, tmp_path):
+    """Passing ``phi_offset_baseline``, ``phi_offset_triangle`` and ``phi_offset_modes``
+    to ``model_loglike`` replaces each group's width via ``widths_for(terms)`` in the
+    projected sine covariance, while ``scale_penalty=True`` keeps dividing the periodic
+    wrap-penalty rows by ``hypot(sigma, sigma_off)`` at the nominal ``widths``."""
+    from astropy.io import fits
+
+    # 1. Small-residual scene with baseline, triangle, and supplied spanning modes
+    d, data, delta, model = cp_file
+    modes = np.random.default_rng(77).normal(scale=0.015, size=(2, delta.size))
+    nom_kw = dict(baseline=0.02, triangle=0.03, modes=modes)
+    fit_terms = dict(phi_offset_baseline=0.07, phi_offset_triangle=0.09, phi_offset_modes=2.4)
+    base = float(model_loglike(model, data))
+    worst = 0.0
+    for sp in (True, False):
+        got = float(model_loglike(model, data.with_closure_offsets(**nom_kw, scale_penalty=sp), **fit_terms)) - base
+        want = closure_offsets_reference(d, delta, **nom_kw, scale_penalty=sp, **fit_terms)
+        err = abs(got - want)
+        assert err < 1e-11 * max(1.0, abs(want))
+        worst = max(worst, err)
+
+    # 2. Large near-pi wrap scene: separates nominal wrap scaling from fitted-width wrap scaling by O(10+) nats
+    path = tmp_path / "cp_fitted_wrap.fits"
+    simulate.observe(
+        path,
+        binary_vis(0.0, 0.0, 0.0),
+        UTS,
+        hour_angles_h=[-1.0, 1.0],
+        wavelengths=np.linspace(1.6e-6, 2.2e-6, 3),
+        dec_deg=-50.0,
+        sigma_v2=0.01,
+        sigma_cp_deg=4.0,
+        rng=np.random.default_rng(23),
+    )
+    with fits.open(path, mode="update") as hdul:
+        t3phi = hdul["OI_T3"].data["T3PHI"]
+        hdul["OI_T3"].data["T3PHI"] = np.full_like(t3phi, 172.0)
+        hdul.flush()
+
+    dw = ours.load(path)
+    data_w = OIData(str(path))
+    model_w = vm.UniformDisk(0.01)
+    delta_w = -dw["cp"]
+    base_w = float(model_loglike(model_w, data_w))
+    nom_w = dict(baseline=0.02, triangle=0.03)
+    fit_w = dict(phi_offset_baseline=0.18, phi_offset_triangle=0.22)
+
+    got_w = float(model_loglike(model_w, data_w.with_closure_offsets(**nom_w, scale_penalty=True), **fit_w)) - base_w
+    want_w = closure_offsets_reference(dw, delta_w, **nom_w, scale_penalty=True, **fit_w)
+    wrong_fitted_wrap = closure_offsets_reference(
+        dw, delta_w, baseline=fit_w["phi_offset_baseline"], triangle=fit_w["phi_offset_triangle"], scale_penalty=True
+    )
+    err_w = abs(got_w - want_w)
+    worst = max(worst, err_w)
+
+    record("nominal_vs_fitted_wrap_gap", abs(got_w - wrong_fitted_wrap))
+    record("max_abs_dloglike_fitted_terms", worst)
+    assert abs(got_w - wrong_fitted_wrap) > 5.0  # nominal vs fitted wrap denominator differs by O(10+) nats
+    assert worst < 1e-11 * max(1.0, abs(want_w))
 
 
 # --------------------------------------------------------- RV zero points

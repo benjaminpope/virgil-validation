@@ -1,4 +1,4 @@
-"""Shared helpers for the PolarDisk benchmarks (stage V of virgil's radial-profile plan):
+"""Shared helpers for the MultipoleDisk (formerly PolarDisk) benchmarks (stage V of virgil's radial-profile plan):
 provenance (virgil commit, software versions, machine) and result files.
 
 Run every script with the repository's environment, from the repository root:

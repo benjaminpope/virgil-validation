@@ -1,0 +1,353 @@
+{
+ "case": "I-sim-large",
+ "comparison": "imaging",
+ "code": "virgil",
+ "config": "matched",
+ "threads": 1,
+ "size": "full",
+ "status": "gate_failed",
+ "t_process": 0.740576055002748,
+ "t_calib": 0.25289154500933364,
+ "t_import": 3.9056314210029086,
+ "t_load": 0.5063209509971784,
+ "t_init": null,
+ "t_cold": 1.2318139060080284,
+ "t_warm": [
+  0.1919894500024384,
+  0.16259767601150088,
+  0.17091343700303696,
+  0.1564189990021987,
+  0.15835848200367764
+ ],
+ "peak_footprint_mb": 1571.496,
+ "peak_rss_mb": 1571.496,
+ "baseline_mb": null,
+ "cpu_ratio": 12.000605273632045,
+ "flags": [
+  "threads_not_held"
+ ],
+ "n_data": 6750,
+ "n_param": 2304,
+ "iterations": {
+  "steps_by_budget": [
+   25,
+   50,
+   100,
+   200,
+   400,
+   800,
+   1600,
+   3200
+  ]
+ },
+ "accuracy": {
+  "ladder": [
+   {
+    "budget": 25,
+    "t_warm": [
+     0.1919894500024384,
+     0.16259767601150088,
+     0.17091343700303696,
+     0.1564189990021987,
+     0.15835848200367764
+    ],
+    "steps": 25,
+    "converged": false,
+    "stop": "limit",
+    "score": {
+     "J": 257787.52262322023,
+     "half_chi2_amp": 186622.6882774103,
+     "half_chi2_cp": 66840.55273492876,
+     "tv2": 0.005765708814508193,
+     "flux": 1.0,
+     "n_amp": 4500,
+     "n_cp": 2250,
+     "ncc_registered": 0.8247979024270435,
+     "ncc_shift_rc": [
+      2,
+      -2
+     ],
+     "ncc_unregistered": 0.5743438209641613,
+     "rms_rel_beam": 0.09015601527181734,
+     "beam_mas": 1.5443549845383082
+    }
+   },
+   {
+    "budget": 50,
+    "t_warm": [
+     0.26765174799948,
+     0.32237033000274096,
+     0.31280479600536637,
+     0.2800689329887973,
+     0.3414759829902323
+    ],
+    "steps": 50,
+    "converged": false,
+    "stop": "limit",
+    "score": {
+     "J": 35733.7076504488,
+     "half_chi2_amp": 20977.121055453947,
+     "half_chi2_cp": 9129.205321563519,
+     "tv2": 0.007503175031241778,
+     "flux": 1.0,
+     "n_amp": 4500,
+     "n_cp": 2250,
+     "ncc_registered": 0.7875550100410488,
+     "ncc_shift_rc": [
+      3,
+      -3
+     ],
+     "ncc_unregistered": 0.47649239384897973,
+     "rms_rel_beam": 0.1046790045279057,
+     "beam_mas": 1.5443549845383082
+    }
+   },
+   {
+    "budget": 100,
+    "t_warm": [
+     0.619260432998999,
+     0.5940411470073741,
+     0.6124497369892197,
+     0.7758615360071417,
+     0.6056635770073626
+    ],
+    "steps": 100,
+    "converged": false,
+    "stop": "limit",
+    "score": {
+     "J": 9847.835249186606,
+     "half_chi2_amp": 4581.079867759978,
+     "half_chi2_cp": 2399.4066985207373,
+     "tv2": 0.003823131577207855,
+     "flux": 1.0,
+     "n_amp": 4500,
+     "n_cp": 2250,
+     "ncc_registered": 0.8559919511513125,
+     "ncc_shift_rc": [
+      3,
+      -3
+     ],
+     "ncc_unregistered": 0.48239569805136645,
+     "rms_rel_beam": 0.11123283596747953,
+     "beam_mas": 1.5443549845383082
+    }
+   },
+   {
+    "budget": 200,
+    "t_warm": [
+     1.3119941119948635,
+     1.1808063710050192,
+     1.4102392200002214,
+     1.5457255159999477,
+     1.235678213997744
+    ],
+    "steps": 200,
+    "converged": false,
+    "stop": "limit",
+    "score": {
+     "J": 5145.165813384676,
+     "half_chi2_amp": 2867.693279070947,
+     "half_chi2_cp": 1186.8159386554778,
+     "tv2": 0.0014542087942110015,
+     "flux": 0.9999999999999998,
+     "n_amp": 4500,
+     "n_cp": 2250,
+     "ncc_registered": 0.9359286412430732,
+     "ncc_shift_rc": [
+      3,
+      -3
+     ],
+     "ncc_unregistered": 0.5121323949076334,
+     "rms_rel_beam": 0.11424034663309549,
+     "beam_mas": 1.5443549845383082
+    }
+   },
+   {
+    "budget": 400,
+    "t_warm": [
+     2.6019480940012727,
+     2.7752275070088217,
+     3.008182259000023,
+     2.683182406006381,
+     2.1688435550022405
+    ],
+    "steps": 400,
+    "converged": false,
+    "stop": "limit",
+    "score": {
+     "J": 4047.0440808017847,
+     "half_chi2_amp": 2355.985419507916,
+     "half_chi2_cp": 1089.0550889104488,
+     "tv2": 0.0008026714298445595,
+     "flux": 0.9999999999999996,
+     "n_amp": 4500,
+     "n_cp": 2250,
+     "ncc_registered": 0.962948486224686,
+     "ncc_shift_rc": [
+      3,
+      -3
+     ],
+     "ncc_unregistered": 0.5066234745966146,
+     "rms_rel_beam": 0.11777077614886207,
+     "beam_mas": 1.5443549845383082
+    }
+   },
+   {
+    "budget": 800,
+    "t_warm": [
+     4.888532684999518,
+     5.645224628009601,
+     5.35908930900041,
+     5.198063995005214,
+     5.368100831998163
+    ],
+    "steps": 800,
+    "converged": false,
+    "stop": "limit",
+    "score": {
+     "J": 3774.501678473305,
+     "half_chi2_amp": 2254.7053035609156,
+     "half_chi2_cp": 1069.7465847641529,
+     "tv2": 0.0006000663868643153,
+     "flux": 0.9999999999999999,
+     "n_amp": 4500,
+     "n_cp": 2250,
+     "ncc_registered": 0.9367235168981286,
+     "ncc_shift_rc": [
+      3,
+      -3
+     ],
+     "ncc_unregistered": 0.43024661962202476,
+     "rms_rel_beam": 0.1299028222354429,
+     "beam_mas": 1.5443549845383082
+    }
+   },
+   {
+    "budget": 1600,
+    "t_warm": [
+     10.551148045997252,
+     10.431480151004507,
+     10.57194710499607,
+     10.58873658599623,
+     10.92396208801074
+    ],
+    "steps": 1600,
+    "converged": false,
+    "stop": "limit",
+    "score": {
+     "J": 3671.0865467905246,
+     "half_chi2_amp": 2241.2774426368505,
+     "half_chi2_cp": 1065.651911254622,
+     "tv2": 0.0004855429238654025,
+     "flux": 0.9999999999999999,
+     "n_amp": 4500,
+     "n_cp": 2250,
+     "ncc_registered": 0.8804203367926485,
+     "ncc_shift_rc": [
+      3,
+      -3
+     ],
+     "ncc_unregistered": 0.3549378484877989,
+     "rms_rel_beam": 0.14137818225745136,
+     "beam_mas": 1.5443549845383082
+    }
+   },
+   {
+    "budget": 3200,
+    "t_warm": [
+     22.292292653990444,
+     20.93682827601151,
+     22.53718299198954,
+     22.590914041007636,
+     22.67066520699882
+    ],
+    "steps": 3200,
+    "converged": false,
+    "stop": "limit",
+    "score": {
+     "J": 3646.84767124373,
+     "half_chi2_amp": 2238.325001089524,
+     "half_chi2_cp": 1063.6830924326491,
+     "tv2": 0.00045978610362874264,
+     "flux": 1.0,
+     "n_amp": 4500,
+     "n_cp": 2250,
+     "ncc_registered": 0.862939059245941,
+     "ncc_shift_rc": [
+      3,
+      -3
+     ],
+     "ncc_unregistered": 0.341037505259675,
+     "rms_rel_beam": 0.14385131457719852,
+     "beam_mas": 1.5443549845383082
+    }
+   }
+  ],
+  "ladder_J": [
+   257787.52262322023,
+   35733.7076504488,
+   9847.835249186606,
+   5145.165813384676,
+   4047.0440808017847,
+   3774.501678473305,
+   3671.0865467905246,
+   3646.84767124373
+  ]
+ },
+ "settings": {
+  "case": "I-sim-large",
+  "task": "ladder",
+  "reps": 5,
+  "size": "full",
+  "budgets": [
+   25,
+   50,
+   100,
+   200,
+   400,
+   800,
+   1600,
+   3200
+  ],
+  "gtol": 0.0,
+  "method": "lbfgsb",
+  "memory": 50,
+  "run": "r2",
+  "jax_cache": "cold",
+  "device": "cpu",
+  "reason": "gate against the neutral scorer failed: worst relative difference 0.0185 (tolerance 1e-09); see gate_results.json"
+ },
+ "provenance": {
+  "vv_commit": null,
+  "vv_dirty": false,
+  "virgil_pin": "09b268521072a83f73bc0a77defa6485db270c7b",
+  "versions": {
+   "virgil-astro": null,
+   "jax": "0.12.0.1",
+   "jaxlib": "0.12.0.1",
+   "numpyro": "0.22.0",
+   "pmoired": "26.10.1",
+   "ehtim": null,
+   "numpy": "2.5.4",
+   "scipy": "1.18.1",
+   "arviz": null,
+   "astropy": "8.0.2"
+  },
+  "python": "3.12.7",
+  "macos": "",
+  "chip": "AMD EPYC 7543 32-Core Processor",
+  "cpu_count": 64,
+  "thread_env": {
+   "OMP_NUM_THREADS": "1",
+   "OPENBLAS_NUM_THREADS": "1",
+   "VECLIB_MAXIMUM_THREADS": "1",
+   "MKL_NUM_THREADS": "1",
+   "NUMEXPR_NUM_THREADS": "1",
+   "XLA_FLAGS": "--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1 --xla_cpu_parallel_codegen_split_count=1 --xla_cpu_use_xnnpack=false --xla_cpu_enable_concurrency_optimized_scheduler=false",
+   "JAX_PLATFORMS": "cpu",
+   "JULIA_NUM_THREADS": "1"
+  },
+  "data_manifest_sha256": "9ff0c4e5432d399dab1b2db62ae15a4b3066af304147876be59a21020f540205"
+ },
+ "language": "python"
+}

@@ -93,7 +93,7 @@ def _ids(case):
     return "-".join(str(case[k]) for k in ("npix", "weighting") if k in case) + ("-taper" if "uvtaper" in case else "")
 
 
-@pytest.mark.validates("virgil.radio.ComplexVisData.dirty_image", "virgil.radio.ComplexVisData.dirty_beam", roots=["mathematics"])
+@pytest.mark.validates("virgil.radio.ComplexVisData.dirty_image", "virgil.radio.ComplexVisData.dirty_beam", roots=["mathematics"], headline="max_rel_error_dirty_image")
 @pytest.mark.parametrize("case", CASES, ids=_ids)
 def test_dirty_image_and_beam_are_the_direct_sums_with_briggs_weights_and_the_gaussian_taper(case):
     """Dirty image sum w Re[V exp(+2 pi i (u x + v y))] / sum w and dirty beam sum w cos(2 pi (u x + v y)) /
@@ -125,7 +125,8 @@ def test_dirty_image_and_beam_are_the_direct_sums_with_briggs_weights_and_the_ga
         assert got_b[c, c] == pytest.approx(1.0, abs=1e-9)
 
 
-@pytest.mark.validates("virgil.radio.ComplexVisData.dirty_image", "virgil.radio.ComplexVisData.dirty_beam", roots=["mathematics"], kind="control")
+@pytest.mark.slow
+@pytest.mark.validates("virgil.radio.ComplexVisData.dirty_image", "virgil.radio.ComplexVisData.dirty_beam", roots=["mathematics"], kind="control", tier="B")
 def test_control_the_wrong_sign_or_a_flipped_axis_of_the_reference_misses_by_order_one():
     """The agreement above is orientation-sensitive: the reference with exp(-2 pi i ...) (sign), with columns
     reversed (East on the right) or with the image transposed does not match at 1e-2 of the peak, so the
@@ -288,8 +289,9 @@ def _has_gn_diag():
     return hasattr(fitting, "gauss_newton_diag")
 
 
+@pytest.mark.slow
 @pytest.mark.skipif(not _has_gn_diag(), reason="virgil.fitting.gauss_newton_diag not installed")
-@pytest.mark.validates("virgil.fitting.gauss_newton_diag", roots=["mathematics"])
+@pytest.mark.validates("virgil.fitting.gauss_newton_diag", roots=["mathematics"], headline="max_rel_error_entropy_metric", tier="B")
 def test_data_diagonal_is_the_finite_difference_diagonal_of_jtj_and_the_entropy_metric_is_w_b_one_minus_b():
     """6 x 6 image of softmax logits: (a) the data diagonal of J^T J, J the central finite-difference
     Jacobian (step 1e-6) of the weighted residual sqrt(w) [Re M, Im M] with respect to the logits, M my own
@@ -353,7 +355,7 @@ def _virgil_marginal(model, vis, w, a1, a2, tau_a, tau_p, steps=8):
     return value, np.concatenate([lam, phi])
 
 
-@pytest.mark.validates("virgil._antenna_gains.marginal", roots=["mathematics"])
+@pytest.mark.validates("virgil._antenna_gains.marginal", roots=["mathematics"], headline="abs_error_scale_4")
 def test_laplace_antenna_gain_marginal_matches_gauss_hermite_quadrature_and_improves_with_information():
     """Three antennas, six baseline samples, the documented default widths (0.1 amplitude, 0.5 phase). The
     Stage-1 Laplace value -log integral exp(-chi^2 / 2) N(lam) N(phi) d lam d phi (six dimensions) differs
@@ -375,7 +377,8 @@ def test_laplace_antenna_gain_marginal_matches_gauss_hermite_quadrature_and_impr
     assert errs[1] < errs[0] / 2
 
 
-@pytest.mark.validates("virgil._antenna_gains.marginal", roots=["mathematics"], kind="control")
+@pytest.mark.slow
+@pytest.mark.validates("virgil._antenna_gains.marginal", roots=["mathematics"], kind="control", tier="B")
 def test_control_a_reference_with_the_wrong_prior_widths_misses_the_laplace_value():
     """Doubling both prior widths in the quadrature reference moves it by far more than the tolerance of the
     test above (so that test does pin the prior widths and their normalisation)."""

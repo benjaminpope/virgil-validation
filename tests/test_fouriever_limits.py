@@ -115,7 +115,7 @@ POSITIONS = [[float(x), float(y)] for x in XS for y in YS]
 
 
 @pytest.mark.parametrize("name,cov", [("uts3", False), ("uts4", True)], ids=["3UT", "4UT-correlated"])
-@pytest.mark.validates("virgil.limits.absil_limits", "virgil.limits.injection_limits", roots=["fouriever"])
+@pytest.mark.validates("virgil.limits.absil_limits", "virgil.limits.injection_limits", roots=["fouriever"], headline="max_rel_absil")
 def test_limits_match_fouriever_exactly(files, name, cov):
     """With the same degrees of freedom. fouriever counts every closure
     phase as one (definition D7); virgil counts the independent ones
@@ -136,8 +136,9 @@ def test_limits_match_fouriever_exactly(files, name, cov):
     assert worst["absil"] < 3e-4 and worst["injection"] < 3e-4, worst
 
 
+@pytest.mark.slow
 @pytest.mark.xfail(strict=True, raises=RuntimeError, reason="P8: fouriever's detlim fails under NumPy 2 / SciPy 1.18")
-@pytest.mark.validates("fouriever", roots=["mathematics"], kind="upstream")
+@pytest.mark.validates("fouriever", roots=["mathematics"], kind="upstream", tier="B")
 def test_fouriever_public_detlim_against_its_exact_criteria(files):
     """fouriever's detlim minimises |nsigma - sigma|^2 with L-BFGS-B from the
     best of 200 log-spaced fluxes; how close that comes to its own exact

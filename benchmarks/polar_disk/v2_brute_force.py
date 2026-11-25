@@ -1,4 +1,4 @@
-"""V2 (brute force): PolarDisk against numpy DFTs of finely rendered scenes.
+"""V2 (brute force): MultipoleDisk against numpy DFTs of finely rendered scenes.
 
 Each scene is rendered in the disk plane at fine resolution and carried to the
 sky by the documented geometry (src/crosscheck/polar_images.py, which imports
@@ -26,7 +26,7 @@ from common import save  # noqa: F401
 from crosscheck import polar_images as P
 from crosscheck import sky
 from virgil import (
-    Cone, GaussianRing, Harmonics, PointSource, PolarDisk, PowerLawHeight, RadialLinear, System, ThinRing, VonMises,
+    Cone, GaussianRing, Harmonics, MultipoleDisk, PointSource, PowerLawHeight, RadialLinear, System, ThinRing, VonMises,
 )
 
 WL = 2.2e-6
@@ -51,14 +51,14 @@ def gauss_nodes(r0, sigma, n_pan=80, order=12):
 
 def case_linear():
     c, s = (0.3, 0.1, 0.05), (-0.2, 0.05, 0.1)
-    disk = PolarDisk(ThinRing(6.0), harmonics=Harmonics(c=c, s=s), inc=40.0, pa=25.0, dra=0.7, ddec=-0.4)
+    disk = MultipoleDisk(ThinRing(6.0), harmonics=Harmonics(c=c, s=s), inc=40.0, pa=25.0, dra=0.7, ddec=-0.4)
     cl = lambda sgn=1.0, c=c, s=s: P.render([6.0], [1.0], lambda t: P.az_linear(sgn * t, c, s), 40.0, 25.0, dra=0.7, ddec=-0.4)
     return disk, cl(), {"azimuth sense reversed": cl(-1.0)}
 
 
 def case_positive():
     w = (0.4 + 0.1j, 0.2j, -0.15 + 0.1j)
-    disk = PolarDisk(GaussianRing(6.0, 0.8), harmonics=Harmonics(w=w), inc=55.0, pa=140.0, n_r=96, dra=-0.5, ddec=0.9)
+    disk = MultipoleDisk(GaussianRing(6.0, 0.8), harmonics=Harmonics(w=w), inc=55.0, pa=140.0, n_r=96, dra=-0.5, ddec=0.9)
     r, wt = gauss_nodes(6.0, 0.8)
     cl = lambda sgn=1.0: P.render(r, wt, lambda t: P.az_positive(sgn * t, w), 55.0, 140.0, dra=-0.5, ddec=0.9)
     return disk, cl(), {"azimuth sense reversed": cl(-1.0)}
@@ -66,14 +66,14 @@ def case_positive():
 
 def case_positive_m1():
     w = (0.5 - 0.3j,)
-    disk = PolarDisk(ThinRing(8.0), harmonics=Harmonics(w=w), inc=30.0, pa=60.0)
+    disk = MultipoleDisk(ThinRing(8.0), harmonics=Harmonics(w=w), inc=30.0, pa=60.0)
     cl = lambda sgn=1.0: P.render([8.0], [1.0], lambda t: P.az_positive(sgn * t, w), 30.0, 60.0)
     return disk, cl(), {"azimuth sense reversed": cl(-1.0)}
 
 
 def case_vonmises():
     kappa, th0 = 30.0, 250.0
-    disk = PolarDisk(ThinRing(20.0), harmonics=VonMises(kappa=kappa, theta0=th0), inc=35.0, pa=100.0, blur_fwhm=2.0)
+    disk = MultipoleDisk(ThinRing(20.0), harmonics=VonMises(kappa=kappa, theta0=th0), inc=35.0, pa=100.0, blur_fwhm=2.0)
     deg = disk.harmonics.degree
     cl = lambda t0=th0: P.render([20.0], [1.0], lambda t: P.az_vonmises(t, kappa, t0), 35.0, 100.0, n_theta=2048)
     # theta0 defined from the major axis, towards pa + 90: the control puts it at -theta0
@@ -82,15 +82,15 @@ def case_vonmises():
 
 def case_cone():
     alpha, tip = 40.0, 3.0
-    disk = PolarDisk(GaussianRing(5.0, 1.0), height=Cone(alpha, tip), inc=60.0, pa=70.0, n_r=128)
+    disk = MultipoleDisk(GaussianRing(5.0, 1.0), height=Cone(alpha, tip), inc=60.0, pa=70.0, n_r=128)
     r, wt = gauss_nodes(5.0, 1.0)
     cl = lambda sgn=1.0: P.render(r, wt, None, 60.0, 70.0, height=lambda rr: sgn * (rr / np.tan(np.deg2rad(alpha)) - tip))
     return disk, cl(), {"height sense reversed": cl(-1.0)}
 
 
 def case_flared_harmonics():
-    disk = PolarDisk(GaussianRing(6.0, 0.8), harmonics=Harmonics(c=(0.2,), s=(0.3,)), height=PowerLawHeight(1.0, 6.0, 1.25),
-                     inc=70.0, pa=15.0, n_r=128)
+    disk = MultipoleDisk(GaussianRing(6.0, 0.8), harmonics=Harmonics(c=(0.2,), s=(0.3,)), height=PowerLawHeight(1.0, 6.0, 1.25),
+                         inc=70.0, pa=15.0, n_r=128)
     r, wt = gauss_nodes(6.0, 0.8)
     cl = lambda sgn=1.0: P.render(r, wt, lambda t: P.az_linear(t, (0.2,), (0.3,)), 70.0, 15.0,
                                   height=lambda rr: sgn * 1.0 * (rr / 6.0) ** 1.25)
@@ -122,7 +122,7 @@ def case_chromatic(u, v):
     wavelength-dependent weight, against brute force."""
     lam0, flux = 2.2e-6, 0.8
     alpha = RadialLinear(-1.0, 0.2, 6.0)
-    disk = PolarDisk(GaussianRing(6.0, 0.8), inc=45.0, pa=20.0, n_r=96, flux=flux, spectral_index=alpha, wavel0=lam0, dra=0.5, ddec=0.2)
+    disk = MultipoleDisk(GaussianRing(6.0, 0.8), inc=45.0, pa=20.0, n_r=96, flux=flux, spectral_index=alpha, wavel0=lam0, dra=0.5, ddec=0.2)
     scene = System(star=PointSource(1.0), disk=disk)
     r, wt = gauss_nodes(6.0, 0.8)
     row = {"tol": TOL, "per_wavelength": {}}

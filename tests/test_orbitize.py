@@ -295,7 +295,8 @@ def test_relative_astrometry_matches_orbitize(grid):
     assert pos < TOL_POS and sep < TOL_POS and pa < TOL_POS
 
 
-@pytest.mark.validates("virgil.orbits.KeplerOrbit", "external_bridge.orbitize_bridge", roots=["orbitize"], kind="control")
+@pytest.mark.slow
+@pytest.mark.validates("virgil.orbits.KeplerOrbit", "external_bridge.orbitize_bridge", roots=["orbitize"], kind="control", tier="B")
 def test_wrong_mappings_fail(grid):
     """The mappings a reader could plausibly get wrong are wrong by the size
     of the orbit: the primary's argument of periastron (omega + 180°, as in
@@ -350,11 +351,17 @@ def test_thiele_innes_orbit_matches_orbitize(grid):
     # either solution of the documented pair (the range of Omega: F15)
     d_node = np.minimum(*[np.maximum(np.abs(_dangle(k[:, 5], want[:, 5] + s)), np.abs(_dangle(k[:, 4], want[:, 4] + s)))
                           for s in (0.0, 180.0)])
+    period_err = float(np.max(np.abs(k[:, 0] / want[:, 0] - 1.0)))
+    t_peri_err = float(np.max(np.abs(k[:, 1] - want[:, 1]) / want[:, 0]))
+    ecc_err = float(np.max(np.abs(k[:, 2] - want[:, 2])))
     el_err = max(np.max(d_node), np.max(np.abs(_dangle(k[:, 3], want[:, 3]))), np.max(np.abs(k[:, 6] / want[:, 6] - 1)))
     record("max_rel_position", pos)
     record("max_rel_constants", const)
     record("max_element_error", el_err)
+    record("max_rel_period", period_err)
+    record("max_rel_t_peri", t_peri_err)
     assert pos < TOL_POS and const < 1e-14
+    assert period_err < 1e-14 and t_peri_err < 1e-14 and ecc_err < 1e-14
     assert el_err < 1e-9  # degrees (and relative a): atan2 of the constants
 
 
@@ -379,7 +386,7 @@ def _state_errors(grid):
     return pos / grid["a"], inc
 
 
-@pytest.mark.validates("virgil.orbits.StateVectorOrbit", roots=["orbitize"])
+@pytest.mark.validates("virgil.orbits.StateVectorOrbit", roots=["orbitize"], headline="max_rel_position")
 def test_state_vector_orbit_matches_orbitize(grid, runs):
     """StateVectorOrbit.from_kepler: its sky velocity (mas/yr) at t_ref
     equals the time derivative of orbitize!'s positions; its line-of-sight
@@ -416,7 +423,7 @@ def test_state_vector_orbit_matches_orbitize(grid, runs):
     assert np.max(pos) < 1e-12  # face-on and circular too, since F16's fix
 
 
-@pytest.mark.validates("virgil.orbits.StateVectorOrbit", roots=["orbitize", "mathematics"])
+@pytest.mark.validates("virgil.orbits.StateVectorOrbit", roots=["orbitize", "mathematics"], headline="max_rel_position")
 def test_f16_state_vector_round_trip_keeps_float64_precision(grid):
     """The state (dra, ddec, vra, vdec, dz, vz, mu) fixes the orbit as
     precisely face-on as edge-on (the inclination is atan2(|h_xy|, h_z) of
@@ -435,7 +442,7 @@ def test_f16_state_vector_round_trip_keeps_float64_precision(grid):
 # -------------------------------------------------------------- radial velocities
 
 
-@pytest.mark.validates("virgil.orbits.RVData", "virgil.orbits.KeplerOrbit", roots=["orbitize"], property="rv_curve")
+@pytest.mark.validates("virgil.orbits.RVData", "virgil.orbits.KeplerOrbit", roots=["orbitize"], property="rv_curve", headline="max_rel_rv_secondary")
 @pytest.mark.parametrize("case", range(len(RV_ORBITS)))
 def test_radial_velocities_match_orbitize(runs, case):
     """RVData.model for the primary and the secondary against orbitize!'s
@@ -456,7 +463,7 @@ def test_radial_velocities_match_orbitize(runs, case):
     assert d_sec < TOL_RV and d_pri < TOL_RV
 
 
-@pytest.mark.validates("virgil.orbits.RVData", roots=["orbitize"], property="rv_curve")
+@pytest.mark.validates("virgil.orbits.RVData", roots=["orbitize"], property="rv_curve", headline="max_rel_secondary_with_primary")
 def test_radial_velocities_match_orbitize_system(runs):
     """Through orbitize!'s own System (fit_secondary_mass=True), as a fit
     would see it. With primary RVs present, orbitize! fits the instrument's
@@ -496,7 +503,8 @@ def test_p7_companion_rvs_are_barycentric_as_documented(runs):
 # ------------------------------------------------------------------ symmetries
 
 
-@pytest.mark.validates("virgil.orbits.KeplerOrbit", "virgil.orbits.RVData", roots=["orbitize", "mathematics"])
+@pytest.mark.slow
+@pytest.mark.validates("virgil.orbits.KeplerOrbit", "virgil.orbits.RVData", roots=["orbitize", "mathematics"], headline="max_rel_rate", tier="B")
 def test_symmetries_in_both_codes(grid, runs):
     """The documented symmetries, in each code separately, on the grid's
     orbits with e <= 0.6 and 0.01° < i < 89°:
@@ -566,7 +574,7 @@ def _mass_cases(grid):
     return [(el, vo.KeplerOrbit(*prm, t_ref=REF)) for el, prm in zip(grid["els"][::4], grid["prm"][::4])]
 
 
-@pytest.mark.validates("virgil.orbits.total_mass", "virgil.orbits.distance_pc", roots=["orbitize", "standards"])
+@pytest.mark.validates("virgil.orbits.total_mass", "virgil.orbits.distance_pc", roots=["orbitize", "standards"], headline="max_rel_mass_vs_orbitize")
 def test_total_mass_and_distance_against_orbitize(grid):
     """total_mass(orbit, 1000/plx) recovers orbitize!'s mtot, and
     distance_pc(orbit, mtot) its distance, both with Kepler's third law and
@@ -681,7 +689,7 @@ def beta_pic_model(pos):
 @pytest.mark.skipif(os.environ.get("VALIDATION_CAMPAIGNS") not in ("1", "smoke"),
                     reason="campaign (hours): opt in with VALIDATION_CAMPAIGNS=1 (or =smoke for a minutes-long dry run)")
 @pytest.mark.validates("pipeline:orbitize-posterior", "virgil.orbits.PositionData", "virgil.orbits.KeplerOrbit",
-                       roots=["orbitize"], tier="C")
+                       roots=["orbitize"], tier="C", headline="max_dquantile_over_sd_a_mas")
 def test_beta_pic_posterior_matches_orbitize(tmp_path):
     """Posteriors of beta Pic b's orbit from orbitize!'s example data, with
     matched invariant priors (PRIORS): virgil (PositionData likelihood,

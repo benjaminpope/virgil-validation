@@ -154,7 +154,8 @@ def _run(data, npix=65, pixel_mas=20.0, taper=None, scales=(0, 4), threshold=2e-
     return imager, script.clean(imager, scales_pix=list(scales), mask=mask, gain=0.1, bias=0.6, threshold=threshold, niter=3000, cycleniter=300, cyclefactor=1.0, patch=32, time_limit=0, log=lambda *a: None, **kw)
 
 
-@pytest.mark.validates("virgil.radio.ComplexVisData.model", "virgil.radio.ComplexVisData.dirty_image", roots=["mathematics"])
+@pytest.mark.slow
+@pytest.mark.validates("virgil.radio.ComplexVisData.model", "virgil.radio.ComplexVisData.dirty_image", roots=["mathematics"], tier="B")
 def test_cotton_schwab_recovers_point_sources():
     """Two point sources on pixel centres: the model puts their fluxes on those pixels (the exact major cycle removes the PSF
     approximation of the minor cycles) and the restored image peaks on them. The flux pins ``ComplexVisData.model``'s scale (the PSF
@@ -175,7 +176,8 @@ def test_cotton_schwab_recovers_point_sources():
     assert res["history"][-1]["peak_residual_jy"] < 2e-3
 
 
-@pytest.mark.validates("virgil.radio.ComplexVisData.model", "virgil.radio.ComplexVisData.dirty_image", roots=["mathematics"])
+@pytest.mark.slow
+@pytest.mark.validates("virgil.radio.ComplexVisData.model", "virgil.radio.ComplexVisData.dirty_image", roots=["mathematics"], tier="B")
 def test_cotton_schwab_recovers_a_gaussian_with_the_taper():
     """A Gaussian of 5-pixel FWHM through the uv taper: the restored image has the tapered beam, peak and flux of the
     Gaussian convolved with it, and the model carries the source's flux; the loop converges to the threshold, and the beam has the
@@ -204,7 +206,7 @@ def test_cotton_schwab_recovers_a_gaussian_with_the_taper():
     assert np.unravel_index(np.argmax(img), img.shape) == pytest.approx((int(c + 4), int(c - 3)), abs=1.5)
 
 
-@pytest.mark.validates("virgil.radio_clean.clean", roots=["mathematics"])
+@pytest.mark.validates("virgil.radio_clean.clean", "virgil.radio_clean.fit_beam", roots=["mathematics"])
 def test_virgil_radio_clean_agrees_with_the_independent_loop():
     """``virgil.radio_clean.clean`` and this repo's NumPy loop (the same recipe: Briggs, taper, multi-scale, exact major cycles)
     give the same restored image on synthetic point sources: the two codes share only the visibilities."""
@@ -230,6 +232,155 @@ def test_virgil_radio_clean_agrees_with_the_independent_loop():
     assert res.model.sum() == pytest.approx(ref["model"].sum(), rel=0.02)
 
 
+@pytest.mark.validates("virgil.radio_clean.fit_beam", roots=["mathematics"], headline="max_rel_axis_err")
+@pytest.mark.parametrize("pa", [0.0, 35.0, 125.0])
+def test_virgil_fit_beam_recovers_analytic_gaussian_and_pa_east_of_north(pa):
+    """``virgil.radio_clean.fit_beam`` recovers the major/minor FWHM (mas) and position angle East of North from an analytic
+    Gaussian main lobe built directly in sky offsets (East = smaller column, North = smaller row), while ignoring negative
+    sidelobes below ``psfcutoff=0.35``."""
+    rc = pytest.importorskip("virgil.radio_clean")
+    px = 3.0
+    bmaj_mas, bmin_mas = 27.0, 15.0
+    p = np.deg2rad(pa)
+    max_axis_err = 0.0
+    max_pa_err = 0.0
+    for n in (64, 65):
+        c = (n - 1) / 2.0
+        rr, cc = np.indices((n, n), dtype=float)
+        east, north = (c - cc) * px, (c - rr) * px
+        along = east * np.sin(p) + north * np.cos(p)
+        across = east * np.cos(p) - north * np.sin(p)
+        lobe = np.exp(-4.0 * np.log(2.0) * ((along / bmaj_mas) ** 2 + (across / bmin_mas) ** 2))
+        r_pix = np.hypot(rr - c, cc - c)
+        psf = lobe - 0.12 * np.exp(-(((r_pix - 14.0) / 2.5) ** 2))
+        a, b, got_pa = rc.fit_beam(psf, px, psfcutoff=0.35)
+        max_axis_err = max(max_axis_err, abs(a / bmaj_mas - 1.0), abs(b / bmin_mas - 1.0))
+        max_pa_err = max(max_pa_err, abs((got_pa - pa + 90.0) % 180.0 - 90.0))
+    record("max_rel_axis_err", float(max_axis_err))
+    record("max_pa_err_deg", float(max_pa_err))
+    assert max_axis_err < 2e-3
+    assert max_pa_err < 0.2
+
+
+@pytest.mark.validates("virgil.radio_clean.fit_beam", roots=["mathematics"], kind="control")
+def test_control_virgil_fit_beam_rejects_mirrored_pa():
+    """An oblique lobe elongated towards PA 35 deg East of North is separated by 70 deg from its East-West mirror (PA 145 deg)."""
+    rc = pytest.importorskip("virgil.radio_clean")
+    n, px, pa = 65, 3.0, 35.0
+    c = (n - 1) / 2.0
+    rr, cc = np.indices((n, n), dtype=float)
+    east, north = (c - cc) * px, (c - rr) * px
+    p = np.deg2rad(pa)
+    along, across = east * np.sin(p) + north * np.cos(p), east * np.cos(p) - north * np.sin(p)
+    psf = np.exp(-4.0 * np.log(2.0) * ((along / 27.0) ** 2 + (across / 15.0) ** 2))
+    _, _, got_pa = rc.fit_beam(psf, px)
+    mirror_pa = 180.0 - pa
+    miss_deg = abs((got_pa - mirror_pa + 90.0) % 180.0 - 90.0)
+    record("mirrored_pa_miss_deg", float(miss_deg))
+    assert miss_deg > 60.0
+
+
+@pytest.mark.validates("virgil.radio_clean.restore", roots=["mathematics"], headline="flux_integral_rel_err")
+def test_virgil_restore_convolves_jy_per_pixel_into_jy_per_beam_and_adds_residual():
+    """``virgil.radio_clean.restore`` convolves a Jy/pixel model with a peak-1 elliptical Gaussian of ``(bmaj_mas, bmin_mas, pa_deg)``
+    and adds the residual unchanged: an isolated point of flux ``F`` peaks at ``F`` Jy/beam, integrates to ``F * Omega_beam / px^2``,
+    and agrees pixel-by-pixel with ``crosscheck.alma_clean.restore``."""
+    rc = pytest.importorskip("virgil.radio_clean")
+    n, px = 65, 5.0
+    beam_mas = (35.0, 20.0, 38.0)
+    model = np.zeros((n, n))
+    flux = 1.7
+    model[28, 37] = flux
+    zero_res = np.zeros((n, n))
+    restored0 = np.asarray(rc.restore(model, zero_res, beam_mas, px))
+    ref0 = ac.restore(model, zero_res, (beam_mas[0] / px, beam_mas[1] / px, beam_mas[2]))
+    beam_area_pix = np.pi * (beam_mas[0] / px) * (beam_mas[1] / px) / (4.0 * np.log(2.0))
+    flux_rel_err = abs(restored0.sum() / (flux * beam_area_pix) - 1.0)
+    max_ref_diff = float(np.abs(restored0 - ref0).max() / flux)
+    rng = np.random.default_rng(7)
+    residual = 0.03 * rng.normal(size=(n, n))
+    restored = np.asarray(rc.restore(model, residual, beam_mas, px))
+    resid_add_err = float(np.abs((restored - restored0) - residual).max())
+    record("flux_integral_rel_err", float(flux_rel_err))
+    record("max_diff_vs_crosscheck_over_peak", max_ref_diff)
+    record("residual_additivity_abs_err", resid_add_err)
+    assert np.unravel_index(np.argmax(restored0), (n, n)) == (28, 37)
+    assert restored0.max() == pytest.approx(flux, rel=1e-6)
+    assert flux_rel_err < 1e-10
+    assert max_ref_diff < 1e-12
+    assert resid_add_err < 1e-13
+
+
+@pytest.mark.validates("virgil.radio_clean.restore", roots=["mathematics"], kind="control")
+def test_control_virgil_restore_wrong_pa_misses():
+    """Restoring an elongated beam at the mirrored PA ``180 - pa`` changes off-peak lobe intensities by order one."""
+    rc = pytest.importorskip("virgil.radio_clean")
+    n, px = 65, 5.0
+    model = np.zeros((n, n))
+    model[32, 32] = 1.0
+    right = np.asarray(rc.restore(model, np.zeros((n, n)), (45.0, 15.0, 35.0), px))
+    wrong = np.asarray(rc.restore(model, np.zeros((n, n)), (45.0, 15.0, 145.0), px))
+    miss = float(np.abs(right - wrong).max())
+    record("mirrored_pa_restore_miss", miss)
+    assert miss > 0.25
+
+
+@pytest.mark.validates("virgil.radio_clean.RadioCleanResult", roots=["mathematics", "standards"], headline="max_rel_vis_err")
+def test_virgil_radio_clean_result_invariants_and_model_visibilities(tmp_path):
+    """``RadioCleanResult`` satisfies ``image == restore(model, residual, beam, px)``, ``model_visibilities(data)`` matches the
+    direct DFT of ``model``, ``pb_corrected`` divides by the power beam above ``pblimit`` (NaN outside), and ``write_fits``
+    round-trips the four image products (flipped to FITS South-at-row-0 WCS with ``CDELT1 < 0 < CDELT2``) and beam keywords."""
+    from astropy.io import fits
+
+    rc = pytest.importorskip("virgil.radio_clean")
+    npix, px = 65, 20.0
+    truth = [(36, 28, 0.20), (25, 40, 0.08)]
+    data = _data(n=1200, truth=truth, npix=npix, pixel_mas=px)
+    res = rc.clean(data, npix, px, deconvolver="hogbom", niter=400, gain=0.1, threshold=2e-3)
+    assert isinstance(res, rc.RadioCleanResult)
+    re_restored = np.asarray(rc.restore(res.model, res.residual, res.beam, res.pixel_scale_mas))
+    restore_consistency = float(np.abs(np.asarray(res.image) - re_restored).max())
+
+    # Direct DFT of res.model on sky offsets (East = (c - col)*px, North = (c - row)*px)
+    c = (npix - 1) / 2.0
+    rr, cc = np.mgrid[:npix, :npix]
+    dra = (c - cc) * px * ac.MAS
+    ddec = (c - rr) * px * ac.MAS
+    u, v = np.asarray(data.u), np.asarray(data.v)
+    nz = np.nonzero(np.asarray(res.model) != 0.0)
+    direct_vis = np.zeros(len(u), dtype=complex)
+    model_np = np.asarray(res.model, float)
+    for r, col in zip(*nz):
+        direct_vis += model_np[r, col] * np.exp(-2j * np.pi * (u * dra[r, col] + v * ddec[r, col]))
+    got_vis = np.asarray(res.model_visibilities(data))
+    max_rel_vis_err = float(np.abs(got_vis - direct_vis).max() / np.abs(direct_vis).max())
+
+    # Primary-beam correction and pblimit cutoff
+    pb = np.exp(-(((rr - c) ** 2 + (cc - c) ** 2) / (18.0**2)))
+    pbcor = np.asarray(res.pb_corrected(pb, pblimit=0.2))
+    inside = pb >= 0.2
+    pb_err = float(np.abs(pbcor[inside] - np.asarray(res.image)[inside] / pb[inside]).max())
+    assert np.all(np.isnan(pbcor[~inside]))
+
+    # FITS round-trip (virgil row 0 is North; standard FITS CDELT2 > 0 puts South at row 0, i.e. arr[::-1])
+    prefix = str(tmp_path / "clean_prod")
+    res.write_fits(prefix, ra_deg=239.8, dec_deg=-37.8, freq_hz=230e9)
+    for suffix, arr in (("image", res.image), ("model", res.model), ("residual", res.residual), ("psf", res.psf)):
+        with fits.open(f"{prefix}.{suffix}.fits") as hdul:
+            assert hdul[0].header["CDELT1"] < 0.0 and hdul[0].header["CDELT2"] > 0.0
+            assert np.allclose(hdul[0].data.squeeze()[::-1], np.asarray(arr), rtol=1e-6, atol=1e-7)
+            if suffix == "image":
+                assert hdul[0].header["BMAJ"] * 3.6e6 == pytest.approx(res.beam[0], rel=1e-5)
+                assert hdul[0].header["BMIN"] * 3.6e6 == pytest.approx(res.beam[1], rel=1e-5)
+
+    record("max_rel_vis_err", max_rel_vis_err)
+    record("restore_consistency_abs_err", restore_consistency)
+    record("pb_corrected_abs_err", pb_err)
+    assert restore_consistency < 1e-12
+    assert max_rel_vis_err < 1e-10
+    assert pb_err < 1e-12
+
+
 @pytest.mark.validates("virgil.radio_clean.clean", roots=["self-consistency"], kind="guard")
 def test_virgil_clean_keywords_bind_to_the_installed_signature(monkeypatch):
     """The keywords ``clean_virgil`` passes bind to ``virgil.radio_clean.clean`` (a renamed argument fails here, not on the cluster); the scales go in mas."""
@@ -250,7 +401,8 @@ def test_virgil_clean_keywords_bind_to_the_installed_signature(monkeypatch):
     assert kw["scales_mas"] == [0.0, 10.0 * args.pixel_mas]
 
 
-@pytest.mark.validates("crosscheck.alma_clean", roots=["self-consistency"], kind="guard")
+@pytest.mark.slow
+@pytest.mark.validates("crosscheck.alma_clean", roots=["self-consistency"], kind="guard", tier="B")
 def test_run_writes_npy_pngs_flux_and_dots_for_the_maxent_start_and_the_page(tmp_path):
     """A short ``run`` on small synthetic data writes the restored image, model, residual, PSF and beam as .npy, a PNG of each, and result.json with the model and restored flux and
     ``dots`` (the page and the gate (e) reference read these); clean.json keeps what ``--start`` reads (``model.fits``, ``beam_mas_deg``)."""

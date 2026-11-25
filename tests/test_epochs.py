@@ -182,8 +182,9 @@ def virgil_m(data, model, **kw):
     return float(ve.marginal_loglike(BinaryModelCartesian(x, y, f), data, **kw))
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("dof", [1.0, 0.5])
-@pytest.mark.validates("virgil.epochs.marginal_loglike", roots=["mathematics"])
+@pytest.mark.validates("virgil.epochs.marginal_loglike", roots=["mathematics"], tier="B")
 def test_marginal_loglike_is_the_jeffreys_integral(single, dof):
     """Differences of m between models equal those of ln ∫ L^dof(s) ds/s,
     one scale per block, by quad; and m is the documented closed form
@@ -241,7 +242,8 @@ def mirror_difference(fn, data_models):
     return fn(data_models[2]) - fn(data_models[0])
 
 
-@pytest.mark.validates("virgil.epochs.marginal_loglike", roots=["mathematics"])
+@pytest.mark.slow
+@pytest.mark.validates("virgil.epochs.marginal_loglike", roots=["mathematics"], tier="B")
 def test_marginal_loglike_bounded_scales(weak):
     """With s_max, each block's scale is bounded to [1/s_max, s_max] and
     integrated out with the exact von Mises density for the closure
@@ -406,7 +408,7 @@ def curvature(d, x, h):
     return H
 
 
-@pytest.mark.validates("virgil.epochs.epoch_positions", "virgil.epochs.EpochPositions", roots=["mathematics"])
+@pytest.mark.validates("virgil.epochs.epoch_positions", "virgil.epochs.EpochPositions", roots=["mathematics"], headline="max_abs_position_mas")
 def test_epoch_positions_refined_maximum_of_m(nights, positions):
     """The refined position and flux maximise our m (SciPy, from the best
     grid point); the covariance is the position block of the inverse of the full
@@ -505,7 +507,8 @@ def our_orbit_scores(ds, elements, flux=FLUX):
     return q, m
 
 
-@pytest.mark.validates("virgil.epochs.Epochs", "virgil.models.OrbitalBinary", roots=["mathematics"])
+@pytest.mark.slow
+@pytest.mark.validates("virgil.epochs.Epochs", "virgil.models.OrbitalBinary", roots=["mathematics"], tier="B")
 def test_epochs_loglike_normalised(orbit_epochs):
     """Epochs.loglike of the orbital binary: the sum over epochs of the
     Gaussian V² density and the von Mises closure-phase density, κ = 1/σ²,
@@ -588,7 +591,7 @@ def our_chain_starts(ds, trials, n, min_distance):
 
 
 @pytest.mark.validates("virgil.epochs.chain_starts", "virgil.epochs.RankedOrbits", "virgil.epochs.Epochs",
-                       roots=["mathematics"])
+                       roots=["mathematics"], headline="max_abs_position_mas_n3")
 def test_chain_starts_cover_both_modes(orbit_epochs):
     """Two clusters of trial orbits: two chains start one in each (the best
     of each, by our own χ²), never on the mirror of the truth, and a third

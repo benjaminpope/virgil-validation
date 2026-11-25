@@ -63,7 +63,8 @@ def test_sbc_ranks_and_criteria_are_well_formed():
     assert s.CRITERIA["draws_per_replicate"] == 99 and s.CRITERIA["family_alpha"] == 0.01
 
 
-@pytest.mark.validates("evidence", roots=["statistics"], kind="guard")
+@pytest.mark.slow
+@pytest.mark.validates("evidence", roots=["statistics"], kind="guard", tier="B")
 def test_sbc_aggregate_refuses_repeats_and_mixed_commits(tmp_path):
     """Replicates are counted once each, from one virgil commit, and the
     coverage band uses the exact null probability of the accepted ranks."""

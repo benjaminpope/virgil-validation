@@ -158,7 +158,8 @@ def test_model_visibility_gradients(name):
     _check(template, paths)
 
 
-@pytest.mark.validates("virgil.models.Image", roots=["mathematics"])
+@pytest.mark.slow
+@pytest.mark.validates("virgil.models.Image", roots=["mathematics"], tier="B")
 def test_image_pixel_gradients():
     """Derivatives with respect to the log-brightness of every pixel (the
     softmax normalisation couples them all)."""
@@ -211,9 +212,11 @@ def test_likelihood_gradients(which):
     check_grads(f, (x0,), order=1, modes=("fwd", "rev"))
 
 
+@pytest.mark.slow
 @pytest.mark.validates(
     "virgil.likelihood.model_loglike", "virgil.inference.laplace_cov",
     roots=["mathematics"],
+    tier="B",
 )
 def test_hessian_of_the_likelihood():
     """Laplace covariances and Fisher matrices use second derivatives.
