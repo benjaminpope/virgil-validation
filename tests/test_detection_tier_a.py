@@ -23,7 +23,8 @@ and virgil.detection.injection_recovery.
   the same searches with uncertainty=False (the statistics-only path of
   BinaryPipeline's null searches: delta_chi2, log_bayes_factor, best_flux,
   best position and converged_fraction agree, max_snr and flux_peak_steps are
-  NaN; two silent-corruption findings on that container are pinned as F32),
+  NaN; the two silent-corruption findings on that container, F32, are fixed in virgil#770 and
+  pinned as checks: max_snr queries and mixed-uncertainty concatenation raise ValueError),
   noisy 7-hole NRM batch/chunk invariance and draw distinctness, and
   position-matched rejection of off-grid interferometric aliases.
 """
@@ -1028,6 +1029,10 @@ def test_f32_statistics_only_max_snr_queries_raise(tmp_path):
         lambda: mc_false.false_alarm_probability("max_snr", 3.0),
         lambda: mc_false.threshold("max_snr", 0.25),
         lambda: mc_false.completeness("max_snr", 0.25),
+        lambda: mc_false.detected("max_snr", 0.25),
+        lambda: mc_false.roc("max_snr"),
+        lambda: mc_false.auc("max_snr"),
+        lambda: mc_false.contrast_curve("max_snr", 0.25),
     ):
         with pytest.raises(ValueError, match="max_snr"):
             query()
@@ -1042,8 +1047,9 @@ def test_f32_concatenate_refuses_mixed_uncertainty(tmp_path):
     share a null distribution for max_snr; concatenate raises ValueError, as it does for other
     mismatched metadata."""
     mc_false, mc_true = _tiny_statistics_only_runs(tmp_path)
-    with pytest.raises(ValueError, match="uncertainty"):
-        det.DetectionMC.concatenate([mc_true, mc_false])
+    for runs in ([mc_true, mc_false], [mc_false, mc_true]):
+        with pytest.raises(ValueError, match="uncertainty"):
+            det.DetectionMC.concatenate(runs)
 
 
 @pytest.mark.validates(

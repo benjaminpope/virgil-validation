@@ -2019,19 +2019,37 @@ def _jitter_sims():
 @pytest.mark.validates(
     "virgil.orbit_cells.reference_jitter",
     roots=["mathematics"],
+    headline="reference_jitter_err_mas",
 )
 def test_reference_jitter_recovers_extra_astrometric_scatter():
     """virgil#733 replaced the type-II ML ``fit_jitter`` by ``reference_jitter``, a robust median excess of the
-    nights' scatter about position-only seed orbits over the quoted errors. Same simulation and tolerances as the
-    old test: small on zero-scatter circular data, and within 0.12..0.65 mas of the injected 0.35 mas, more than
-    2.5x the clean value, on scattered data."""
-    times, dom, _, injected, clean, noisy = _jitter_sims()
+    nights' scatter about position-only seed orbits over the quoted errors:
+    ``sqrt(max(median(|r|^2 / 2) / ln 2 - median(sigma^2), 0))``. With one noise realization scaled to injected
+    scatter 0.15, 0.35 and 0.7 mas (seed 21, as the old test) it is within 15% of the injected value, so a missing
+    sqrt (the variance), 1 / ln 2 or 1 / 2 factor, which move it by 17% to 71%, fails; it is below 0.08 mas on
+    zero-scatter data at the quoted 0.05 mas and at 0.25 mas, where omitting the quoted-variance subtraction
+    would read about 0.25 mas; and it grows with the injected scatter (more than 2.5x the clean value at 0.35)."""
+    times = np.array([0.0, 2.0, 5.0, 9.0, 14.0, 19.0, 24.0]) + T0
+    orbit = (12.0, 0.0, 0.0, 45.0, 0.0, 105.0, 9.0)
+    dom = voc.PeriodDomain(p_cut=7.0, p_max=17.0, overridden=True)
     t_ab = (times[0], times[-1])
-    jit_clean = float(voc.reference_jitter(clean, dom, t_ab))
-    jit_noisy = float(voc.reference_jitter(noisy, dom, t_ab))
+
+    def jitter(pos_sigma, injected):
+        sums = _make_synthetic_summaries(
+            times, orbit, pos_sigma=pos_sigma, extra_scatter_mas=injected, rng_seed=21
+        )
+        return float(voc.reference_jitter(sums, dom, t_ab))
+
+    jit_clean = jitter(0.05, 0.0)
+    jit_clean_wide = jitter(0.25, 0.0)
+    levels = (0.15, 0.35, 0.7)
+    recovered = [jitter(0.05, level) for level in levels]
+    record("reference_jitter_err_mas", max(abs(r - lv) for r, lv in zip(recovered, levels)))
     assert jit_clean < 0.08
-    assert jit_noisy > 2.5 * jit_clean
-    assert 0.12 <= jit_noisy <= 0.65
+    assert jit_clean_wide < 0.08
+    assert all(0.85 * lv <= r <= 1.15 * lv for r, lv in zip(recovered, levels))
+    assert recovered[1] > 2.5 * jit_clean
+    assert recovered[0] < recovered[1] < recovered[2]
 
 
 @pytest.mark.slow
@@ -2069,6 +2087,43 @@ def test_position_cells_marginal_jitter_recovers_extra_astrometric_scatter():
 @pytest.mark.slow
 @pytest.mark.validates(
     "virgil.orbit_cells.position_cells",
+    "virgil.orbit_cells.CellsResult",
+    roots=["mathematics"],
+    headline="marginal_jitter_tracking_err_mas",
+    tier="B",
+)
+def test_position_cells_marginal_jitter_tracks_scatter_on_eccentric_orbit():
+    """On an eccentric orbit (e = 0.3, the same nights and 0.05 mas errors; e = 0 is finding F36) the marginalized
+    sigma_J of ``position_cells`` follows the injected scatter: below 0.08 mas with none, within 0.12..0.65 mas of
+    the injected 0.35 mas, and more than 2.5x the clean value, with no failed cell either way, so a constant
+    ``CellsResult.jitter`` would not pass."""
+    times, dom, op, injected, _, _ = _jitter_sims()
+    orbit = (12.0, 1.5, 0.3, 45.0, 40.0, 105.0, 9.0)
+    jitters = []
+    for extra in (0.0, injected):
+        sums = _make_synthetic_summaries(times, orbit, pos_sigma=0.05, extra_scatter_mas=extra, rng_seed=21)
+        res = voc.position_cells(
+            sums,
+            dom,
+            jax.random.PRNGKey(3),
+            log_outlier=voc.outlier_log_density(sums, op),
+            outlier=op,
+            n_is=400,
+            a_range=(2.0, 20.0),
+            e_max=0.8,
+            flux_floor=1e-3,
+        )
+        assert not np.any(res.failed)
+        jitters.append(float(res.jitter))
+    record("marginal_jitter_tracking_err_mas", abs(jitters[1] - injected))
+    assert jitters[0] < 0.08
+    assert 0.12 <= jitters[1] <= 0.65
+    assert jitters[1] > 2.5 * jitters[0]
+
+
+@pytest.mark.slow
+@pytest.mark.validates(
+    "virgil.orbit_cells.position_cells",
     roots=["mathematics"],
     kind="finding",
     tier="B",
@@ -2077,15 +2132,17 @@ def test_position_cells_marginal_jitter_recovers_extra_astrometric_scatter():
     strict=True,
     raises=AssertionError,
     reason=(
-        "F36: on the zero-scatter system the marginalized sigma_J of position_cells (virgil#733) cannot be "
-        "read: the true N = 2 cell is flagged unreliable by the importance sampler (also with jitter=0.0 and at "
-        "the default n_is = 4000), so CellsResult.failed is True and CellsResult.jitter is NaN; the type-II ML "
-        "fit_jitter it replaced returned a small value here"
+        "F36: on the zero-scatter circular system the marginalized sigma_J of position_cells (virgil#733) cannot "
+        "be read: the true N = 2 cell is flagged unreliable by the importance sampler at the default n_is = 4000 "
+        "(also with jitter=0.0), so CellsResult.failed is True and CellsResult.jitter is NaN; the type-II ML "
+        "fit_jitter it replaced returned a small value here, and the same nights on an eccentric orbit "
+        "(e = 0.3) are read"
     ),
 )
 def test_f36_position_cells_zero_scatter_jitter_is_readable():
     """F36: on the zero-scatter circular system (the clean arm of the old fit_jitter test) position_cells
-    with ``jitter=None`` should return a finite, small ``CellsResult.jitter`` (< 0.08 mas) and no failed cell."""
+    with ``jitter=None`` should return a finite, small ``CellsResult.jitter`` (< 0.08 mas) and no failed cell, at
+    the default ``n_is`` (an eccentric orbit on the same nights is read: see the eccentric jitter test)."""
     _, dom, op, _, clean, _ = _jitter_sims()
     bk = voc.outlier_log_density(clean, op)
     res = voc.position_cells(
@@ -2094,7 +2151,6 @@ def test_f36_position_cells_zero_scatter_jitter_is_readable():
         jax.random.PRNGKey(3),
         log_outlier=bk,
         outlier=op,
-        n_is=400,
         a_range=(2.0, 20.0),
         e_max=0.8,
         flux_floor=1e-3,
