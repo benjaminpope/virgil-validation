@@ -186,6 +186,12 @@ def cmd_tune(args):
     ev = ac.Evaluator(obj)
     best = {}
     for m in METHODS:
+        done = out / f"tune_{m}.json"
+        if done.exists():  # a rerun of the same --out keeps every method that finished (a crash late in the list must not repeat 30 min of work)
+            rows = json.loads(done.read_text())
+            best[m] = min(rows, key=lambda r: (r["t"] is None, r["t"] if r["t"] is not None else r["decrement"] if r["decrement"] is not None else np.inf))["opts"]
+            say(f"tune {m}: kept from {done.name}")
+            continue
         rows = []
         for i, opts in enumerate(TUNE_GRID[m]):
             d = out / "tune" / f"{m}_{i}"
