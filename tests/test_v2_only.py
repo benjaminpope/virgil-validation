@@ -44,7 +44,8 @@ def _virgil_fit(path):
     return data, d, float(np.sqrt(cov[0, 0]))
 
 
-@pytest.mark.validates("virgil.oifits.read_oifits", "virgil.oidata.OIData", roots=["standards"])
+@pytest.mark.slow
+@pytest.mark.validates("virgil.oifits.read_oifits", "virgil.oidata.OIData", roots=["standards"], tier="B")
 def test_a_v2_only_file_is_read(tmp_path):
     from astropy.io import fits
 
@@ -58,7 +59,8 @@ def test_a_v2_only_file_is_read(tmp_path):
     np.testing.assert_allclose(observed, np.asarray(data.model(vm.UniformDisk(DIAM))), atol=1e-12)
 
 
-@pytest.mark.validates("virgil.fitting.fit", "virgil.models.UniformDisk", roots=["mathematics"])
+@pytest.mark.slow
+@pytest.mark.validates("virgil.fitting.fit", "virgil.models.UniformDisk", roots=["mathematics"], tier="B")
 def test_noise_free_v2_only_fit_recovers_the_diameter(tmp_path):
     path = _v2_file(tmp_path / "v2.fits")
     _, d, _ = _virgil_fit(path)
@@ -97,7 +99,8 @@ def test_v2_only_diameter_pulls(tmp_path):
     assert abs(pulls.std() - 1) < 3 / np.sqrt(2 * n)
 
 
-@pytest.mark.validates("virgil.oifits.read_oifits", "virgil.oidata.OIData", roots=["standards"])
+@pytest.mark.slow
+@pytest.mark.validates("virgil.oifits.read_oifits", "virgil.oidata.OIData", roots=["standards"], tier="B")
 def test_two_telescopes_give_v2_alone(tmp_path):
     """A two-telescope array has no closure phases at all."""
     path = tmp_path / "two.fits"

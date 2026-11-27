@@ -141,7 +141,8 @@ def _keys(ddid, freq, time, a1, a2):
                    np.asarray(a1).tolist(), np.asarray(a2).tolist()))
 
 
-@pytest.mark.validates("external_bridge.mpol_worker", roots=["mpol", "mathematics"], kind="reference")
+@pytest.mark.slow
+@pytest.mark.validates("external_bridge.mpol_worker", roots=["mpol", "mathematics"], kind="reference", tier="B")
 @needs_env
 def test_training_asdf_keeps_exactly_the_points_of_virgils_other_folds(cv, tmp_path):
     """For each fold J, the points ``loaddata`` returns from the training asdf are the points of virgil's fold file with fold != J
@@ -171,7 +172,8 @@ def test_training_asdf_keeps_exactly_the_points_of_virgils_other_folds(cv, tmp_p
     record("export_fold_asdf worst relative u difference to the npz", res["worst_match"]["u_max_rel"])
 
 
-@pytest.mark.validates("external_bridge.mpol_worker", roots=["mpol", "mathematics"], kind="reference")
+@pytest.mark.slow
+@pytest.mark.validates("external_bridge.mpol_worker", roots=["mpol", "mathematics"], kind="reference", tier="B")
 @needs_env
 def test_hermitian_partners_are_in_the_same_training_asdf_or_both_out(cv, tmp_path):
     """Every point and its explicit Hermitian partner (baseline swapped, (u, v) -> (-u, -v), V conjugated; the synthetic set
@@ -194,7 +196,8 @@ def test_hermitian_partners_are_in_the_same_training_asdf_or_both_out(cv, tmp_pa
     record("hermitian pairs checked in a training asdf", n_pairs)
 
 
-@pytest.mark.validates("external_bridge.mpol_worker", roots=["mpol"], kind="control")
+@pytest.mark.slow
+@pytest.mark.validates("external_bridge.mpol_worker", roots=["mpol"], kind="control", tier="B")
 @needs_env
 def test_score_fold_checks_the_training_asdf_is_the_folds_own(cv, tmp_path):
     """``train_asdf`` of the right fold is recorded (fold, flagged count, hash of its flags, echoed checkpoint fold); another fold's
@@ -212,7 +215,8 @@ def test_score_fold_checks_the_training_asdf_is_the_folds_own(cv, tmp_path):
         tr._run(dict(base, train_asdf=cv["asdf"]), tmp_path)
 
 
-@pytest.mark.validates("external_bridge.mpol_worker", roots=["mpol"], kind="control")
+@pytest.mark.slow
+@pytest.mark.validates("external_bridge.mpol_worker", roots=["mpol"], kind="control", tier="B")
 @needs_env
 def test_export_fold_asdf_refuses_an_npz_that_is_not_the_asdfs_data(cv, tmp_path):
     """The fold file of one dataset against the asdf of another (other times and baselines) raises instead of writing a mask."""
@@ -232,7 +236,8 @@ def _virgil_scores(cv, held_mask, values):
     return sc, s1
 
 
-@pytest.mark.validates("external_bridge.mpol_worker", roots=["mpol", "mathematics"], kind="check")
+@pytest.mark.slow
+@pytest.mark.validates("external_bridge.mpol_worker", roots=["mpol", "mathematics"], kind="check", tier="B")
 @needs_env
 def test_score_fold_agrees_with_virgils_score_on_the_same_held_out_points(cv, tmp_path):
     """The held-out scores of ``score_fold`` (MPoL's own model: ``Net``, accurate NuFFT, ``adjust_*``) and of
@@ -294,7 +299,8 @@ def test_cv_compare_subcommand_writes_its_files_and_converts_lam_ent_by_c11(tmp_
     assert (tmp_path / "out" / "mpol_cv_compare.md").read_text().startswith("# MPoL and virgil") and (tmp_path / "out" / "mpol_cv_compare.png").exists()
 
 
-@pytest.mark.validates("external_bridge.mpol_worker", roots=["mpol", "mathematics"], kind="check")
+@pytest.mark.slow
+@pytest.mark.validates("external_bridge.mpol_worker", roots=["mpol", "mathematics"], kind="check", tier="B")
 @needs_env
 def test_held_out_scores_of_all_folds_add_up_to_the_all_data_score(cv, tmp_path):
     """The four folds' held-out counts and ``chi2_raw`` per ddid sum to virgil's score of every point at the same parameters (counts

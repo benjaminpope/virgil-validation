@@ -95,7 +95,8 @@ def fouriever(path, ps, cov=True):
     return sp.run("fouriever", "fouriever_worker.py", {"task": "chi2", "path": path, "params": ps, "cov": cov})
 
 
-@pytest.mark.validates("virgil.oidata.OIData.cp_noise", roots=["fouriever", "mathematics"], property="correlation")
+@pytest.mark.slow
+@pytest.mark.validates("virgil.oidata.OIData.cp_noise", roots=["fouriever", "mathematics"], property="correlation", tier="B")
 def test_closure_phase_correlation_matches_fouriever(files):
     """virgil's correlation matrix of the closure phases, fouriever's
     (its CPCOV divided by the errors) and ours (T T^T / 3 per snapshot and
@@ -148,7 +149,8 @@ def test_correlated_chi2_matches_fouriever(files):
     assert abs(got_v[0] / got_f[0] - 1) < 1e-4
 
 
-@pytest.mark.validates("virgil.likelihood.whitened_residuals", roots=["fouriever"], kind="control")
+@pytest.mark.slow
+@pytest.mark.validates("virgil.likelihood.whitened_residuals", roots=["fouriever"], kind="control", tier="B")
 def test_independent_closure_phases_overcount(files):
     """fouriever without its covariance treats every triangle as
     independent: its chi-squared then differs from virgil's by several per
@@ -186,8 +188,9 @@ def test_plain_residual_across_the_phase_cut(tmp_path):
     assert np.max(np.abs(got / plain - 1)) < 1e-12
 
 
+@pytest.mark.slow
 @pytest.mark.xfail(strict=True, raises=AssertionError, reason="P5: fouriever's closure-phase residual is not wrapped")
-@pytest.mark.validates("fouriever", roots=["mathematics"], kind="upstream")
+@pytest.mark.validates("fouriever", roots=["mathematics"], kind="upstream", tier="B")
 def test_p5_residual_wraps_across_the_phase_cut(tmp_path):
     """A near-equal binary (flux ratio 0.99, within fouriever's fitting
     range) has a closure phase of 178.4 deg. A measurement 3 deg away is
@@ -209,9 +212,11 @@ def test_p5_residual_wraps_across_the_phase_cut(tmp_path):
     assert fouriever(path, [[f, DRA, DDEC]])["chi2"][0] < 100
 
 
+@pytest.mark.slow
 @pytest.mark.validates(
     "virgil.likelihood.whitened_residuals", "virgil.oidata.OIData.cp_noise",
-    roots=["fouriever", "mathematics"], kind="definition",  # D6: asserts the codes differ
+    roots=["fouriever", "mathematics"], kind="definition",  # D6: asserts the codes differ,
+    tier="B",
 )
 def test_unequal_errors_use_different_generalised_inverses(files):
     """D6: with unequal errors in a group, fouriever's r^T C^+ r and virgil's
@@ -310,7 +315,8 @@ def closed_form_chi2(d, f, x, y):
     return float(np.sum(((v2 - d["v2"]) / d["dv2"]) ** 2) + np.sum(((cp - d["cp"]) / d["dcp"]) ** 2))
 
 
-@pytest.mark.validates("fouriever", roots=["mathematics"], kind="reference")
+@pytest.mark.slow
+@pytest.mark.validates("fouriever", roots=["mathematics"], kind="reference", tier="B")
 def test_fourievers_binary_chi2_is_the_closed_form(tmp_path):
     """Noise-free three-UT file of a faint binary (closure phases well
     inside +-180 deg, so P5 does not arise): fouriever's chi-squared without

@@ -1,0 +1,114 @@
+{
+ "case": "B-pulls-base-pulls",
+ "comparison": "binary",
+ "code": "virgil",
+ "config": "matched",
+ "threads": 1,
+ "size": "full",
+ "status": "ok",
+ "t_process": 0.34806637505535054,
+ "t_calib": 0.08600916690193117,
+ "t_import": 2.3388374999631196,
+ "t_load": null,
+ "t_init": null,
+ "t_cold": 4.31288654205855,
+ "t_warm": [],
+ "peak_footprint_mb": 281.41288,
+ "peak_rss_mb": 454.213632,
+ "baseline_mb": null,
+ "cpu_ratio": 1.2943396226415094,
+ "flags": [
+  "threads_not_held",
+  "likelihood_mismatch"
+ ],
+ "n_data": 300,
+ "n_param": 3,
+ "iterations": {
+  "seeds": 200
+ },
+ "accuracy": {
+  "n": 200,
+  "names": [
+   "dra",
+   "ddec",
+   "flux"
+  ],
+  "pull_mean": [
+   0.030865604586245227,
+   0.016747777633887864,
+   -0.07886704722639175
+  ],
+  "pull_sd": [
+   1.0281655013343793,
+   0.9759307625269192,
+   0.9343160415440548
+  ],
+  "sigma_mean": [
+   0.0144330965428411,
+   0.016124671470968015,
+   0.0009727124230853569
+  ],
+  "bias": [
+   0.00043559234452938966,
+   0.0002574965971517962,
+   -7.504834318537712e-05
+  ],
+  "pull_sd_stderr": 0.05012547071170855,
+  "n_failed": 0,
+  "noise_model": "baseline",
+  "chi2_virgil_at_reference": 230.9363211375903,
+  "chi2_neutral_at_reference": 254.05993887123805,
+  "n_rows_virgil": 390,
+  "likelihood_mismatch_rel": -0.09101638706355504
+ },
+ "settings": {
+  "method": "lm",
+  "gtol": 0.0001,
+  "start": {
+   "dra": 6.3,
+   "ddec": -4.3,
+   "flux": 0.13
+  },
+  "code": "virgil",
+  "device": "cpu",
+  "case": "B-pulls-base",
+  "config": "matched",
+  "size": "full",
+  "task": "pulls",
+  "case_id": "B-pulls-base"
+ },
+ "provenance": {
+  "vv_commit": "09de765eebb41a801f3887013ed227ddffc31ffc",
+  "vv_dirty": true,
+  "virgil_pin": "c2be8278a4d6549282b3cf199852101929df0462",
+  "versions": {
+   "virgil-astro": "0.4.1",
+   "jax": "0.12.0.1",
+   "jaxlib": "0.12.0.1",
+   "numpyro": "0.22.0",
+   "pmoired": "26.10.1",
+   "ehtim": null,
+   "numpy": "2.5.5",
+   "scipy": "1.18.1",
+   "arviz": "1.3.0",
+   "astropy": "8.0.3"
+  },
+  "python": "3.12.12",
+  "macos": "26.7.2",
+  "chip": "Apple M4",
+  "cpu_count": 10,
+  "thread_env": {
+   "OMP_NUM_THREADS": "1",
+   "OPENBLAS_NUM_THREADS": "1",
+   "VECLIB_MAXIMUM_THREADS": "1",
+   "MKL_NUM_THREADS": "1",
+   "NUMEXPR_NUM_THREADS": "1",
+   "XLA_FLAGS": "--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1",
+   "JAX_PLATFORMS": "cpu",
+   "JULIA_NUM_THREADS": "1"
+  },
+  "data_manifest_sha256": "b3051f797e7f8c24d24ca53c6f52ab3898e1d574a612c2aa97ea8b0051ba8b60",
+  "virgil_version": "0.4.1"
+ },
+ "language": "python"
+}

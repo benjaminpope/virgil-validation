@@ -1,0 +1,108 @@
+{
+ "case": "I-sim-96",
+ "comparison": "imaging",
+ "code": "virgil",
+ "config": "native",
+ "threads": 2,
+ "size": "full",
+ "status": "ok",
+ "t_process": 0.6257882279896876,
+ "t_calib": 0.25572051500785165,
+ "t_import": 3.8919862740003737,
+ "t_load": 0.43900351399497595,
+ "t_init": null,
+ "t_cold": 16.122238829993876,
+ "t_warm": [
+  10.4073364079959,
+  10.486634966000565,
+  10.650310374010587,
+  11.663262126996415,
+  11.371280857987585
+ ],
+ "peak_footprint_mb": 1015.028,
+ "peak_rss_mb": 1015.028,
+ "baseline_mb": null,
+ "cpu_ratio": 3.1879082691894456,
+ "flags": [
+  "threads_not_held"
+ ],
+ "n_data": 312,
+ "n_param": 9216,
+ "iterations": {
+  "steps": 6152
+ },
+ "accuracy": {
+  "steps": 6152,
+  "converged": true,
+  "grid_npix": [
+   41,
+   41
+  ],
+  "grid_pixel_mas": 0.29709032057437995,
+  "score": {
+   "J": 2232.397205800554,
+   "half_chi2_amp": 1392.6401726367278,
+   "half_chi2_cp": 51.94942199577543,
+   "tv2": 0.0010504101482240675,
+   "flux": 1.0,
+   "n_amp": 234,
+   "n_cp": 78,
+   "ncc_registered": 0.8287720372504735,
+   "ncc_shift_rc": [
+    3,
+    -3
+   ],
+   "ncc_unregistered": 0.31196657503255154,
+   "rms_rel_beam": 0.14526166028784812,
+   "beam_mas": 1.5448696219530984
+  }
+ },
+ "settings": {
+  "case": "I-sim-96",
+  "task": "native",
+  "reps": 5,
+  "size": "full",
+  "native": {
+   "source": "docs/imaging_rml.md of virgil at the pinned commit (the page of that name in the virgil documentation)",
+   "recipe": "starting_image(data, star=False, largest_mas=12, start='moments'), image_priors, fit(start, priors, data, [MaxEntropy(100)]) with the default method and tolerances; the page's weight (100) is used as given",
+   "start": "moments",
+   "weight": 100
+  },
+  "run": "r2",
+  "jax_cache": "cold",
+  "method": "native"
+ },
+ "provenance": {
+  "vv_commit": null,
+  "vv_dirty": false,
+  "virgil_pin": "09b268521072a83f73bc0a77defa6485db270c7b",
+  "versions": {
+   "virgil-astro": null,
+   "jax": "0.12.0.1",
+   "jaxlib": "0.12.0.1",
+   "numpyro": "0.22.0",
+   "pmoired": "26.10.1",
+   "ehtim": null,
+   "numpy": "2.5.4",
+   "scipy": "1.18.1",
+   "arviz": null,
+   "astropy": "8.0.2"
+  },
+  "python": "3.12.7",
+  "macos": "",
+  "chip": "AMD EPYC 7543 32-Core Processor",
+  "cpu_count": 64,
+  "thread_env": {
+   "OMP_NUM_THREADS": "2",
+   "OPENBLAS_NUM_THREADS": "2",
+   "VECLIB_MAXIMUM_THREADS": "2",
+   "MKL_NUM_THREADS": "2",
+   "NUMEXPR_NUM_THREADS": "2",
+   "XLA_FLAGS": "--xla_cpu_multi_thread_eigen=true intra_op_parallelism_threads=2",
+   "JAX_PLATFORMS": "cpu",
+   "JULIA_NUM_THREADS": "2"
+  },
+  "data_manifest_sha256": "9ff0c4e5432d399dab1b2db62ae15a4b3066af304147876be59a21020f540205"
+ },
+ "language": "python"
+}

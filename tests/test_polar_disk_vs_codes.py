@@ -148,7 +148,8 @@ def test_matches_oimodeler_rings():
     record("max_abs_dV", worst)
 
 
-@pytest.mark.validates("virgil.models.ExpTail", roots=["oimodeler"], kind="upstream")
+@pytest.mark.slow
+@pytest.mark.validates("virgil.models.ExpTail", roots=["oimodeler"], kind="upstream", tier="B")
 @pytest.mark.xfail(strict=True, raises=AssertionError, reason="P9: oimodeler's image-based ExpRing is 8e-3 away from the exact transform of "
                    "its own documented profile at every grid size; virgil agrees with the exact value to 1e-14")
 def test_oimodeler_exp_ring_matches_the_exact_transform():

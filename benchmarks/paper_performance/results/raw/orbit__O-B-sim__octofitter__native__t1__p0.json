@@ -1,0 +1,63 @@
+{
+ "case": "O-B-sim",
+ "comparison": "orbit",
+ "code": "octofitter",
+ "config": "native",
+ "threads": 1,
+ "size": "full",
+ "status": "timeout",
+ "t_process": null,
+ "t_calib": null,
+ "t_import": null,
+ "t_load": null,
+ "t_init": null,
+ "t_cold": null,
+ "t_warm": [],
+ "peak_footprint_mb": null,
+ "peak_rss_mb": null,
+ "baseline_mb": null,
+ "cpu_ratio": null,
+ "flags": [],
+ "n_data": null,
+ "n_param": null,
+ "iterations": {},
+ "accuracy": {},
+ "settings": {
+  "reason": "nning with multiple threads     : false\n[ Info: Likelihood evaluated with multiple threads: false\n[ Info: [bench] observing_geometry = true (user)\n[ Info: [bench] barycentric_lighttime = true (user)\n[ Info: [bench] observing_geometry = true (user)\n[ Info: [bench] barycentric_lighttime = true (user)\n",
+  "task": "orbit-native",
+  "case_id": "O-B-sim"
+ },
+ "provenance": {
+  "vv_commit": "09de765eebb41a801f3887013ed227ddffc31ffc",
+  "vv_dirty": true,
+  "virgil_pin": "c2be8278a4d6549282b3cf199852101929df0462",
+  "versions": {
+   "virgil-astro": "0.4.1",
+   "jax": "0.12.0.1",
+   "jaxlib": "0.12.0.1",
+   "numpyro": "0.22.0",
+   "pmoired": "26.10.1",
+   "ehtim": null,
+   "numpy": "2.5.5",
+   "scipy": "1.18.1",
+   "arviz": "1.3.0",
+   "astropy": "8.0.3"
+  },
+  "python": "3.12.12",
+  "macos": "26.7.2",
+  "chip": "Apple M4",
+  "cpu_count": 10,
+  "thread_env": {
+   "OMP_NUM_THREADS": "2",
+   "OPENBLAS_NUM_THREADS": null,
+   "VECLIB_MAXIMUM_THREADS": null,
+   "MKL_NUM_THREADS": null,
+   "NUMEXPR_NUM_THREADS": null,
+   "XLA_FLAGS": "--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=2",
+   "JAX_PLATFORMS": null,
+   "JULIA_NUM_THREADS": null
+  },
+  "data_manifest_sha256": null
+ },
+ "language": "julia"
+}

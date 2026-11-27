@@ -1,0 +1,52 @@
+# Orbit comparison: virgil vs Octofitter.jl 9.0.0 (plan section 5). Predeclared; changes after a measured run go in CHANGES.md.
+# Data: make_data.py -> ~/.cache/virgil-bench/data/orbit (manifest.json lists sha256 of every file).
+
+code_versions:
+  octofitter: "9.0.0 (registry release)"
+  octofitter_interferometry: "commit 5649836e82ba2530a6df03d0ee032c05b77f0ceb, the v9.0.0 tag of the Octofitter.jl repository, subdirectory OctofitterInterferometry"
+  julia: "1.12.7 (juliaup)"
+  docs_used:
+    - ~/.julia/packages/Octofitter/*/docs/src/rel-astrom.md
+    - ~/.julia/packages/Octofitter/*/docs/src/fit-interfere.md
+
+model:   # shared by both codes (plan section 5)
+  period: {sim: "Uniform(150, 250) d", real: "Normal(10.658451, 0.001) d truncated to +-5 sigma"}
+  total_mass: "Uniform(0.5, 5) Msun"
+  parallax: {sim: "fixed 20 mas", real: "fixed 16.176 mas"}
+  eccentricity: "Uniform(0, 0.9)"
+  inclination: "isotropic (sin i)"
+  angles: "omega, Omega and the phase uniform on the circle (two-component unit-vector prior in both codes)"
+  phase: {matched: "mean anomaly M0 at t_ref", native: "theta (position angle of the companion at t_ref)"}
+  flux_ratio_level_b: "Uniform(0.01, 1), band H, no nuisance parameters"
+  kepler_constant: "IAU nominal GM_sun, au, day in both codes; gate 1 measures any difference"
+  t_ref: {sim: 60000.0, real: 59330.0}
+
+cases:
+  O-A-sim:        {level: A, data: astrometry_O-A-sim.csv, n_epochs: 10, sigma_mas: 0.05}
+  O-A-sim-pulls:  {level: A, data: "astrometry_O-A-sim-pulls_seed00..19.csv", seeds: 20}
+  O-A-real:       {level: A, data: astrometry_O-A-real.csv, n_epochs: 12, source: "oidb/trackb/hd_224974.json role=paper"}
+  O-B-sim:        {level: B, data: "oifits_O-B-sim/epoch00..07.fits + epochs_O-B-sim.csv", n_epochs: 8,
+                   array: "4 stations, 3 hour angles, 6 H channels", flux_ratio: 0.25, sigma_v2: 0.03, sigma_cp_deg: 1.0}
+
+configs:
+  matched:
+    sampler: "NUTS, 4 sequential chains, 1000 warmup + 1000 draws, target_accept 0.8, max tree depth 10, dense mass matrix"
+    octofitter: "octofit(rng, model, 0.8; adaptation, iterations, max_depth) with AdvancedHMC's dense Euclidean metric"
+    virgil: "NumPyro NUTS dense_mass=True"
+    corrections: "observing geometry and barycentric light-time forced off in Octofitter (not applicable in virgil)"
+    initialisation: "each code's own route, no truth-centred starts"
+  native:
+    octofitter: "defaults (corrections :auto, theta phase); Level B through octofit_pigeons"
+    virgil: "the shipped workflow (starting_orbits, period_grid, chain_init_params) with the harness start rule of CHANGES.md 2026-11-23 (prior-quantile period window, midpoint trials, clipped starts); the rule is harness logic, not a virgil default"
+  smoke: "200 warmup + 200 draws, 4 chains, for WP-O checks only (rows flagged by settings, never used for a headline)"
+
+levels:
+  A: {matched: supported, native: supported}
+  B: {matched: "supported if Octofitter's OIFITS reader loads the files (gate 4); see README",
+      native: "virgil shipped workflow vs Octofitter pigeons; recorded as unsupported with the error text if it cannot run"}
+
+gates:
+  1: "ephemeris vs crosscheck.orbits.position, 5 element sets x 20 epochs incl. i>90 deg and e=0.6, <1e-6 mas"
+  2: "Level A log-likelihood difference between two points vs neutral.astrometry_loglike, relative <1e-8"
+  3: "Level B log-likelihood difference vs the neutral independent-Gaussian V2+CP chi2; virgil's default closure-phase likelihood is recorded as likelihood_mismatch"
+  4: "OIFITS reader arrays (V2, closure phase, u, v, triangle indices, no index 0) vs astropy"

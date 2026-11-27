@@ -1,0 +1,54 @@
+{
+ "case": "O-A-sim",
+ "comparison": "orbit",
+ "code": "octofitter",
+ "config": "native",
+ "threads": 1,
+ "size": "full",
+ "status": "ok",
+ "t_process": 0.9567084170000015,
+ "t_calib": 0.006629167,
+ "t_import": 6.507929041,
+ "t_load": 13.185403375,
+ "t_init": 18.26229325,
+ "t_cold": 4.962787375,
+ "t_warm": [
+  2.960372334
+ ],
+ "peak_footprint_mb": 1836.108152,
+ "peak_rss_mb": 1897.693184,
+ "baseline_mb": null,
+ "cpu_ratio": 0.956350626118068,
+ "flags": [],
+ "n_data": 20,
+ "n_param": 11,
+ "iterations": {
+  "sampling_calls": 2
+ },
+ "accuracy": {},
+ "settings": {
+  "observing_geometry": "auto",
+  "phase_parameter": "\u03b8",
+  "target_accept": 0.8,
+  "sampler": "octofit",
+  "draws": 1000,
+  "chain_method": "sequential calls",
+  "max_tree_depth": 10,
+  "case": "O-A-sim",
+  "config": "native",
+  "versions": {
+   "julia": "1.12.7",
+   "octofitter": "9.0.0"
+  },
+  "chains": 4,
+  "mass_matrix": "dense (AdvancedHMC DenseEuclideanMetric)",
+  "barycentric_lighttime": "auto",
+  "warmup": 1000,
+  "task": "orbit-native",
+  "case_id": "O-A-sim"
+ },
+ "provenance": {
+  "julia": "1.12.7"
+ },
+ "language": "julia"
+}

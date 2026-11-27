@@ -325,7 +325,8 @@ def test_binary_pipeline_recovery_resume_and_load_roundtrip(tmp_path):
     gc.collect()
 
 
-@pytest.mark.validates("virgil.pipeline.BinaryPipeline", roots=["mathematics"], kind="control")
+@pytest.mark.slow
+@pytest.mark.validates("virgil.pipeline.BinaryPipeline", roots=["mathematics"], kind="control", tier="B")
 def test_binary_pipeline_nondetection_and_bad_chi2_checks_control(tmp_path):
     """Mismatched calibrator transfer function (V^2 > 1, zero closure phase) fails both detection and chi2 checks."""
     raw = tmp_path / "null_star.fits"
@@ -436,7 +437,8 @@ def test_star_pipeline_recovers_uniform_disk_angular_diameter(tmp_path):
     gc.collect()
 
 
-@pytest.mark.validates("virgil.pipeline.StarPipeline", roots=["mathematics"], kind="control")
+@pytest.mark.slow
+@pytest.mark.validates("virgil.pipeline.StarPipeline", roots=["mathematics"], kind="control", tier="B")
 def test_star_pipeline_mismatched_binary_chi2_check_control(tmp_path):
     """Fitting a high-SNR equal-flux binary with StarPipeline triggers the chi2_uniform failure check."""
     bin_path = tmp_path / "not_a_single_star.fits"
@@ -567,7 +569,8 @@ def test_disk_pipeline_recovers_inclined_gaussian_ring(tmp_path):
     assert by_name_gp["error_scale"] == "pass"
 
 
-@pytest.mark.validates("virgil.pipeline.DiskPipeline", roots=["mathematics"], kind="control")
+@pytest.mark.slow
+@pytest.mark.validates("virgil.pipeline.DiskPipeline", roots=["mathematics"], kind="control", tier="B")
 def test_disk_pipeline_corrupted_errors_check_control(tmp_path):
     """Strong asymmetric binary data with under-quoted errors trips DiskPipeline's chi2_reduced failure check."""
     raw = tmp_path / "disk_bad_raw.fits"
@@ -714,7 +717,8 @@ def test_imaging_pipeline_staged_members_and_skyimage_recovery(tmp_path):
     gc.collect()
 
 
-@pytest.mark.validates("virgil.pipeline.ImagingPipeline", roots=["mathematics"], kind="control")
+@pytest.mark.slow
+@pytest.mark.validates("virgil.pipeline.ImagingPipeline", roots=["mathematics"], kind="control", tier="B")
 def test_imaging_pipeline_underquoted_errors_check_control(tmp_path):
     """Severe noise with tenfold under-quoted error bars trips ImagingPipeline fit checks."""
     raw = tmp_path / "img_noisy.fits"
@@ -856,12 +860,14 @@ def test_orbit_pipeline_blind_keplerian_recovery(tmp_path):
     gc.collect()
 
 
+@pytest.mark.slow
 @pytest.mark.validates(
     "virgil.pipeline.BinaryPipeline",
     "virgil.pipeline.OrbitPipeline",
     "virgil.pipeline.Check",
     roots=["mathematics"],
     kind="control",
+    tier="B",
 )
 def test_pipeline_short_nuts_chain_trips_ess_fail_control(tmp_path):
     """Short 30-draw NUTS chains on clean binary/orbit data pass chi2/detection yet fail ess and converged."""
@@ -942,7 +948,8 @@ def test_pipeline_short_nuts_chain_trips_ess_fail_control(tmp_path):
     gc.collect()
 
 
-@pytest.mark.validates("virgil.pipeline.OrbitPipeline", roots=["mathematics"], kind="control")
+@pytest.mark.slow
+@pytest.mark.validates("virgil.pipeline.OrbitPipeline", roots=["mathematics"], kind="control", tier="B")
 def test_orbit_pipeline_companion_free_noise_control(tmp_path):
     """Companion-free single-star nights trip OrbitPipeline's no_orbit / detection quality checks."""
     paths = []

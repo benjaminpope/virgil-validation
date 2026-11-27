@@ -182,8 +182,9 @@ def virgil_m(data, model, **kw):
     return float(ve.marginal_loglike(BinaryModelCartesian(x, y, f), data, **kw))
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("dof", [1.0, 0.5])
-@pytest.mark.validates("virgil.epochs.marginal_loglike", roots=["mathematics"])
+@pytest.mark.validates("virgil.epochs.marginal_loglike", roots=["mathematics"], tier="B")
 def test_marginal_loglike_is_the_jeffreys_integral(single, dof):
     """Differences of m between models equal those of ln ∫ L^dof(s) ds/s,
     one scale per block, by quad; and m is the documented closed form
@@ -241,7 +242,8 @@ def mirror_difference(fn, data_models):
     return fn(data_models[2]) - fn(data_models[0])
 
 
-@pytest.mark.validates("virgil.epochs.marginal_loglike", roots=["mathematics"])
+@pytest.mark.slow
+@pytest.mark.validates("virgil.epochs.marginal_loglike", roots=["mathematics"], tier="B")
 def test_marginal_loglike_bounded_scales(weak):
     """With s_max, each block's scale is bounded to [1/s_max, s_max] and
     integrated out with the exact von Mises density for the closure
@@ -505,7 +507,8 @@ def our_orbit_scores(ds, elements, flux=FLUX):
     return q, m
 
 
-@pytest.mark.validates("virgil.epochs.Epochs", "virgil.models.OrbitalBinary", roots=["mathematics"])
+@pytest.mark.slow
+@pytest.mark.validates("virgil.epochs.Epochs", "virgil.models.OrbitalBinary", roots=["mathematics"], tier="B")
 def test_epochs_loglike_normalised(orbit_epochs):
     """Epochs.loglike of the orbital binary: the sum over epochs of the
     Gaussian V² density and the von Mises closure-phase density, κ = 1/σ²,

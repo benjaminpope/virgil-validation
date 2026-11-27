@@ -1,0 +1,90 @@
+{
+ "case": "O-A-sim",
+ "comparison": "orbit",
+ "code": "virgil",
+ "config": "matched",
+ "threads": 1,
+ "size": "full",
+ "status": "ok",
+ "t_process": 1.4336447919951745,
+ "t_calib": 0.09801737504312769,
+ "t_import": 1.505809040972963,
+ "t_load": 0.0002733329893089831,
+ "t_init": 1.9246120829484425,
+ "t_cold": 4.935697707987856,
+ "t_warm": [
+  4.308727708004881
+ ],
+ "peak_footprint_mb": 635.307544,
+ "peak_rss_mb": 705.708032,
+ "baseline_mb": null,
+ "cpu_ratio": 1.324567474048443,
+ "flags": [
+  "threads_not_held"
+ ],
+ "n_data": 20,
+ "n_param": 7,
+ "iterations": {
+  "sampling_calls": 2,
+  "total_leapfrog_steps_first_call": 89704
+ },
+ "accuracy": {
+  "likelihood_mismatch_rel": null,
+  "n_divergent": 11,
+  "mean_steps_per_iteration": 22.426
+ },
+ "settings": {
+  "config": "matched",
+  "phase_parameter": "M0",
+  "warmup": 1000,
+  "draws": 1000,
+  "chains": 4,
+  "chain_method": "sequential",
+  "target_accept": 0.8,
+  "max_tree_depth": 10,
+  "mass_matrix": "dense (matches Octofitter: AdvancedHMC DenseEuclideanMetric, sampling.jl)",
+  "case": "O-A-sim",
+  "versions": {
+   "virgil": "0.4.1",
+   "numpyro": "0.22.0",
+   "jax": "0.12.0.1"
+  },
+  "init": "starting_orbits (period_grid over the prior window, n_best = chains)",
+  "closure_phase_noise": null,
+  "task": "orbit-matched",
+  "case_id": "O-A-sim"
+ },
+ "provenance": {
+  "vv_commit": "09de765eebb41a801f3887013ed227ddffc31ffc",
+  "vv_dirty": true,
+  "virgil_pin": "c2be8278a4d6549282b3cf199852101929df0462",
+  "versions": {
+   "virgil-astro": "0.4.1",
+   "jax": "0.12.0.1",
+   "jaxlib": "0.12.0.1",
+   "numpyro": "0.22.0",
+   "pmoired": "26.10.1",
+   "ehtim": null,
+   "numpy": "2.5.5",
+   "scipy": "1.18.1",
+   "arviz": "1.3.0",
+   "astropy": "8.0.3"
+  },
+  "python": "3.12.12",
+  "macos": "26.7.2",
+  "chip": "Apple M4",
+  "cpu_count": 10,
+  "thread_env": {
+   "OMP_NUM_THREADS": "1",
+   "OPENBLAS_NUM_THREADS": "1",
+   "VECLIB_MAXIMUM_THREADS": "1",
+   "MKL_NUM_THREADS": "1",
+   "NUMEXPR_NUM_THREADS": "1",
+   "XLA_FLAGS": "--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1",
+   "JAX_PLATFORMS": "cpu",
+   "JULIA_NUM_THREADS": "1"
+  },
+  "data_manifest_sha256": "4955a5ee36e41c94fd293824f09cafeef6f0d40df1861c34f44a44b336966982"
+ },
+ "language": "python"
+}

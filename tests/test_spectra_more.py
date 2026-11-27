@@ -54,8 +54,9 @@ def test_cubic_nodes_are_scipys_natural_spline():
     np.testing.assert_allclose(ev(s, WL)[WL > NODES[-1]], VALUES[-1], atol=1e-14)
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("values", [VALUES, np.array([0.05, 0.9, 0.02, 0.9, 0.05]), np.array([0.5, 0.01, 0.5, 0.5, 0.5])])
-@pytest.mark.validates("virgil.spectra.Nodes", roots=["mathematics"])
+@pytest.mark.validates("virgil.spectra.Nodes", roots=["mathematics"], tier="B")
 def test_cubic_is_physical_sees_overshoot_between_nodes(values):
     """Every node may be positive while the spline dips below zero between
     them; is_physical must say so exactly when a dense evaluation of the

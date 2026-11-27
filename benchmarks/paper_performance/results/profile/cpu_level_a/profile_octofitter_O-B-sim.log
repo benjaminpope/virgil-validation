@@ -1,0 +1,14 @@
+WARNING: Overriding HOME environment variable with APPTAINERENV_HOME is not permitted
+[ Info: [bench] observing_geometry = false (user)
+[ Info: [bench] barycentric_lighttime = false (user)
+[ Info: Preparing model
+┌ Info: Determined number of free variables
+└   D = 11
+┌ Info: Determined number type
+└   T = Float64
+┌ Warning: Numerical errors encountered in more than 5% of iterations. Results are likely incorrect. Your model might have high curvature, and could be improved. Otherwise, increasing the target acceptance rate (second argument to `octofit`) might help
+│   ratio_divergent_transitions = 0.129
+└ @ Octofitter /var/tmp/jobfs/depot/packages/Octofitter/AyX9v/src/sampling.jl:416
+ℓπcallback(θ): 0.000090 seconds
+∇ℓπcallback(θ): 0.000227 seconds (1 allocation: 32 bytes)
+PROFILE_OCTOFITTER {"draws":1000,"per_call_us":{"logdensity":{"min_us":52.298,"median_us":52.609},"grad":{"min_us":160.381,"median_us":161.1325}},"n_param":11,"case":"O-B-sim","config":"matched","versions":{"julia":"1.12.7","octofitter":"9.0.0"},"warm":{"steps_all_chains":754522.0,"note":"chains run one after another; the warm time covers warmup + draws, steps the draws only (NaN: n_steps absent from the chain)","us_per_step_all":369.9872644031586,"t_s":279.163530712},"chains":4,"julia_threads":1,"calls":500,"warmup":1000}

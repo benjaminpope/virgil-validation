@@ -73,7 +73,8 @@ def test_every_status_is_in_the_vocabulary():
     assert not bad, bad
 
 
-@pytest.mark.validates("evidence", roots=["standards"], kind="guard")
+@pytest.mark.slow
+@pytest.mark.validates("evidence", roots=["standards"], kind="guard", tier="B")
 def test_every_upstream_or_finding_test_is_cited_by_an_unfixed_entry_with_the_matching_ruling():
     problems = []
     for test, kind in _kind_tests().items():
@@ -99,7 +100,8 @@ def test_an_entry_without_evidence_says_why_it_is_pending():
     assert not bad, bad
 
 
-@pytest.mark.validates("evidence", roots=["standards"], kind="guard")
+@pytest.mark.slow
+@pytest.mark.validates("evidence", roots=["standards"], kind="guard", tier="B")
 def test_the_ast_scan_sees_every_upstream_or_finding_marker():
     """A marker form the scanner cannot see (a new decorator style, say) would let its test
     escape the ledger check silently, so the AST count must equal a plain text count."""

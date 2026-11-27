@@ -1,0 +1,82 @@
+{
+ "case": "B-sim-6-T1",
+ "comparison": "binary",
+ "code": "virgil",
+ "config": "matched",
+ "threads": 1,
+ "size": "full",
+ "status": "ok",
+ "t_process": 1.1384632030094508,
+ "t_calib": 0.2628615499997977,
+ "t_import": 4.0758769220119575,
+ "t_load": 0.9529280769929755,
+ "t_init": null,
+ "t_cold": 0.1983710299973609,
+ "t_warm": [
+  0.00026490657008253036,
+  0.0002142650399764534,
+  0.00022840535995783285,
+  0.00023299193999264388,
+  0.00021414180999272504
+ ],
+ "peak_footprint_mb": 1106.496,
+ "peak_rss_mb": 1106.496,
+ "baseline_mb": null,
+ "cpu_ratio": 0.9989237931059689,
+ "flags": [],
+ "n_data": 300,
+ "n_param": 3,
+ "iterations": {
+  "calls_per_warm_batch": 100
+ },
+ "accuracy": {
+  "model_vector_size": 300
+ },
+ "settings": {
+  "warm_is": "seconds per call",
+  "code": "virgil",
+  "device": "gpu",
+  "case": "B-sim-6",
+  "config": "matched",
+  "size": "full",
+  "run": "r2",
+  "jax_cache": "cold",
+  "gpu": "NVIDIA A100-SXM4-80GB",
+  "task": "T1",
+  "case_id": "B-sim-6"
+ },
+ "provenance": {
+  "vv_commit": null,
+  "vv_dirty": false,
+  "virgil_pin": "09b268521072a83f73bc0a77defa6485db270c7b",
+  "versions": {
+   "virgil-astro": null,
+   "jax": "0.12.0.1",
+   "jaxlib": "0.12.0.1",
+   "numpyro": "0.22.0",
+   "pmoired": "26.10.1",
+   "ehtim": null,
+   "numpy": "2.5.4",
+   "scipy": "1.18.1",
+   "arviz": null,
+   "astropy": "8.0.2"
+  },
+  "python": "3.12.7",
+  "macos": "",
+  "chip": "AMD EPYC 7543 32-Core Processor",
+  "cpu_count": 64,
+  "thread_env": {
+   "OMP_NUM_THREADS": "1",
+   "OPENBLAS_NUM_THREADS": "1",
+   "VECLIB_MAXIMUM_THREADS": "1",
+   "MKL_NUM_THREADS": "1",
+   "NUMEXPR_NUM_THREADS": "1",
+   "XLA_FLAGS": "--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1 --xla_cpu_parallel_codegen_split_count=1 --xla_cpu_use_xnnpack=false --xla_cpu_enable_concurrency_optimized_scheduler=false",
+   "JAX_PLATFORMS": "cuda",
+   "JULIA_NUM_THREADS": "1"
+  },
+  "data_manifest_sha256": "b3051f797e7f8c24d24ca53c6f52ab3898e1d574a612c2aa97ea8b0051ba8b60",
+  "virgil_version": "unknown"
+ },
+ "language": "python"
+}

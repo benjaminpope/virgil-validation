@@ -179,6 +179,39 @@
   status: fixed
   links: [https://github.com/benjaminpope/virgil/pull/203]
 
+- id: F29
+  title: fit_staged_nuisances passes Stage 2's already-minimized calibration nuisances instead of nominal calibration (g = 1) as start= to Stage 3's kkt_report, inflating nuisance grad_rel >> NUISANCE_TOL and forcing StagedFit.kkt['converged'] = False at a stationary joint solution
+  objects: [virgil.radio.fit_staged_nuisances, virgil.radio.StagedFit]
+  ruling: virgil
+  referee: mathematics (Stage 3 image KKT converges with pg_rel < KKT_TOL, zero_violation = 0, and kkt_w < KKT_W_TOL, and raw nuisance grad_norm ~ 5.6e-4 has grad_rel ~ 7.6e-4 < NUISANCE_TOL = 1e-3 relative to nominal g = 1, whereas dividing by Stage 2's post-optimization gradient inflates grad_rel to 1.10 >> NUISANCE_TOL)
+  kind: bug (Stage 3 kkt_report normalizes nuisance gradients against Stage 2 optimum instead of nominal calibration)
+  evidence:
+    - tests/test_042_lcurve_ensemble_radio.py::test_radio_fit_staged_nuisances_recovers_gains_ref_obs_and_box_edge_guard
+    - tests/test_042_lcurve_ensemble_radio.py::test_f29_fit_staged_nuisances_stage3_kkt_converged_at_joint_optimum
+  status: open
+
+- id: F30
+  title: kkt_report constructs _Objective(..., boxed=True) on LogUniform parameters fitted in flat ln F, adding +1/F so stationary fit() optima retain grad_norm ~ 1/F and fail NUISANCE_TOL from nearby starts
+  objects: [virgil.fitting.kkt_report]
+  ruling: virgil
+  referee: mathematics (interior gtol=1e-13 fit() optimum on LogUniform(1e-2, 1.0) satisfies |d(-ln L)/dF| ~ 1.1e-4 in fitted flat ln F, matching Uniform(1e-2, 1.0) where grad_norm = 1.1e-4 and grad_rel = 9.4e-8 < NUISANCE_TOL; kkt_report sets boxed=True, adding -d(ln p)/dF = +1/F = 4.63 so grad_rel = 3.87e-3 > NUISANCE_TOL = 1e-3 and converged = False from a 5% nearby start)
+  kind: bug (kkt_report sets boxed=True on flat-coordinate LogUniform parameters, adding +1/F to nuisance gradients at stationary fit() optima)
+  evidence:
+    - tests/test_042_scenes_starlet_kkt.py::test_kkt_report_softmax_image_multiplier_and_nuisance_start_gate
+    - tests/test_042_scenes_starlet_kkt.py::test_f30_kkt_report_loguniform_nuisance_stationary_from_nearby_start
+  status: open
+
+- id: F31
+  title: kkt_report scales LinearImage('sqrt') dark-pixel want_grow deadband by sqrt(f_peak / f_i) > 1000 contrary to its docstring, suppressing >3.8e4x negative flux gradients and certifying converged = True
+  objects: [virgil.fitting.kkt_report]
+  ruling: virgil
+  referee: mathematics (kkt_report docstring states LinearImage 'sqrt' uses the same want_grow rule as 'softmax' with g = dJ/dflux and mu = 0, i.e. g_i < -3 * scale * max(kkt_rel, KKT_TOL); _want_grow multiplies that threshold on 0 < f_i < 1e-6 * f_peak by sqrt(f_peak / f_i) >= 1000, so at x_i = 1e-6 * x_peak a starved companion pixel with -g_i = 1012.5 > 3.85e4 * (3 * scale * KKT_TOL) reports want_grow = 0.0 and converged = True instead of 1/64)
+  kind: bug (LinearImage('sqrt') _want_grow multiplies dark-pixel deadband by sqrt(f_peak / f_i) > 1000 contrary to docstring, suppressing starved dark pixels)
+  evidence:
+    - tests/test_042_scenes_starlet_kkt.py::test_kkt_report_sqrt_linear_image_stationarity_and_exact_zero_pixel
+    - tests/test_042_scenes_starlet_kkt.py::test_f31_kkt_report_sqrt_dark_pixel_want_grow_unscaled_deadband
+  status: open
+
 - id: D5
   title: CANDID's and fouriever's closure-phase residual is the plain phase difference; virgil's is the chord 2 sin(delta/2) (independent closure phases), or sin(delta) plus a periodic penalty (correlated ones, since virgil#174)
   objects: [virgil.likelihood.whitened_residuals, external_bridge.candid_bridge]
@@ -223,6 +256,19 @@
   referee: mathematics (TSV(w) = w (-stv2 + sum b[0,:]^2 + sum b[:,0]^2), exact to 1e-16 on random images)
   evidence: [tests/test_ehtim_reconstruction.py::test_objective_matches_ehtim]
   status: documented
+
+- id: D27
+  title: scenes.spiral evaluates arm width along radial rays |r - r_arm(theta)| with circular Euclidean caps at theta = 0 and 2*pi*turns (differs from exact Euclidean distance to the centreline by cos(psi) = 1 / sqrt(1 + (b/r)^2)), and imaging.image_field clips field_fwhms * FWHM with the outer ceiling winning when inner floor exceeds ceiling
+  objects: [virgil.scenes.spiral, virgil.imaging.image_field]
+  ruling: definition
+  referee: 'self-consistency (conformance to a specification, not an independent derivation: the checks compare scenes.spiral and image_field against reference formulas written to virgil''s own documentation; the ray-radial width matches scenes.spiral to < 1e-13 across the grid while exact Euclidean arm distance differs by > 8% of peak on inner turns and > 3.5% at r >= 16 mas; image_field ceiling-over-floor clipping is pinned with wrong-precedence controls)'
+  evidence:
+    - tests/test_042_scenes_starlet_kkt.py::test_spiral_width_is_sigma_ccw_winding_rounded_cap_and_radial_fade
+    - tests/test_042_scenes_starlet_kkt.py::test_spiral_width_fwhm_and_reversed_winding_controls
+    - tests/test_042_scenes_starlet_kkt.py::test_image_field_and_beam_floor_ceiling_and_restoration
+    - tests/test_042_scenes_starlet_kkt.py::test_image_field_unclipped_and_floor_over_ceiling_controls
+  status: documented
+  decision: 'definition, confirmed by Ben Pope 2026-11-16 (gate G1d): scenes.spiral and imaging.image_field are internal synthetic-scene and field-clipping formula choices, kept as definitions rather than convention trust-graph blockers. The checks are conformance to a specification, not an independent derivation: they compare against reference formulas written to virgil''s own documentation, and wrong-formula controls pin the documented choices.'
 
 - id: P1
   title: PMOIRED setupFit(auto=True) gives NaN models on files with few channels
@@ -721,4 +767,17 @@
   evidence:
     - tests/test_042_orbit_cells_arcs_aliases.py::test_f28_period_window_and_cut_match_api_docstring_without_night_length_clamp
     - tests/test_042_orbit_cells_arcs_aliases.py::test_alias_bands_partition_and_period_window_bounds
+  status: open
+
+- id: F32
+  title: 'DetectionMC on an injection_recovery(uncertainty=False) run: max_snr (all NaN) queries return values instead of raising, and concatenate merges it with uncertainty=True runs'
+  objects: [virgil.detection.DetectionMC, virgil.detection.injection_recovery]
+  ruling: virgil
+  referee: 'mathematics (the documented contract: uncertainty=False leaves max_snr and flux_peak_steps NaN; a statistic that was never computed has no false-alarm probability, threshold or completeness, and runs with different statistics do not share a null distribution; behaviour measured on virgil origin/main 09b2685)'
+  kind: 'bug (false_alarm_probability("max_snr", 3.0) on an n_null = 6 uncertainty=False run returns 1/7 = 0.143, threshold returns (nan, nan), completeness returns 0.0, and DetectionMC.concatenate([mc_true, mc_false]) succeeds with meta uncertainty = True and NaN max_snr draws; none raises. BinaryPipeline''s null searches use uncertainty=False, so their containers carry the NaNs)'
+  evidence:
+    - tests/test_detection_tier_a.py::test_f32_statistics_only_max_snr_queries_raise
+    - tests/test_detection_tier_a.py::test_f32_concatenate_refuses_mixed_uncertainty
+    - tests/test_detection_tier_a.py::test_injection_recovery_without_uncertainty_matches_independent_grid_search
+  decision: 'raised by Carbon review of vv#282, reproduced here; whether virgil raises or documents the behaviour is for Ben (2026-11-20).'
   status: open

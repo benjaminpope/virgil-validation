@@ -20,6 +20,10 @@ and virgil.detection.injection_recovery.
   3-telescope VLTI datasets generated via crosscheck.simulate and searched
   independently via crosscheck.chi2 + crosscheck.sky across all six outputs
   (delta_chi2, log_bayes_factor, max_snr, best_dra, best_ddec, best_flux),
+  the same searches with uncertainty=False (the statistics-only path of
+  BinaryPipeline's null searches: delta_chi2, log_bayes_factor, best_flux,
+  best position and converged_fraction agree, max_snr and flux_peak_steps are
+  NaN; two silent-corruption findings on that container are pinned as F32),
   noisy 7-hole NRM batch/chunk invariance and draw distinctness, and
   position-matched rejection of off-grid interferometric aliases.
 """
@@ -511,10 +515,12 @@ def test_detection_mc_concatenate_and_npz_roundtrip(tmp_path):
         det.DetectionMC.load(bad_npz)
 
 
+@pytest.mark.slow
 @pytest.mark.validates(
     "virgil.detection.injection_recovery",
     roots=["mathematics"],
     headline="max_rel_ddelta_chi2",
+    tier="B",
 )
 def test_injection_recovery_matches_independent_crosscheck_grid_search(tmp_path):
     """On both noiseless and noisy (bootstrap_null sign-flip) 3-telescope VLTI
@@ -749,6 +755,327 @@ def test_injection_recovery_matches_independent_crosscheck_grid_search(tmp_path)
     assert worst_logb < 1e-5
     assert worst_snr < 1e-4
     assert worst_flux < 1e-5
+
+
+@pytest.mark.validates(
+    "virgil.detection.injection_recovery",
+    property="statistics_only_path",
+    roots=["mathematics"],
+    headline="max_rel_ddelta_chi2_stats_only",
+)
+def test_injection_recovery_without_uncertainty_matches_independent_grid_search(tmp_path):
+    """``injection_recovery(uncertainty=False)``, the path BinaryPipeline's null
+    searches use, still computes delta_chi2, log_bayes_factor, best_flux and
+    best position as our independent crosscheck.chi2 + crosscheck.sky grid
+    search does (same grids, draws and tolerances as the full-path check above),
+    on noiseless null and injected draws and on every noisy bootstrap_null
+    sign-flip draw; only max_snr and flux_peak_steps are skipped (NaN), and
+    meta records uncertainty=False."""
+    obs_kw = dict(
+        hour_angles_h=np.linspace(-2.5, 2.5, 5),
+        wavelengths=np.linspace(1.6e-6, 2.2e-6, 4),
+        dec_deg=-45.0,
+        sigma_v2=0.01,
+        sigma_cp_deg=0.5,
+    )
+    tpl_path = tmp_path / "tpl.fits"
+    simulate.observe(tpl_path, _binary_vis(0.0, 0.0, 0.0), UTS3, rng=None, **obs_kw)
+    template = OIData(str(tpl_path))
+    null_scene = vm.BinaryModelCartesian(0.0, 0.0, 0.0)
+    grid = {
+        "dra": np.linspace(-9.0, 9.0, 6),
+        "ddec": np.linspace(-9.0, 9.0, 6),
+        "flux": np.geomspace(1e-4, 2e-1, 45),
+    }
+    injections = {
+        "dra": np.array([5.4, 5.0, -5.1, -5.4]),
+        "ddec": np.array([-1.8, -2.1, 5.0, 5.4]),
+        "flux": np.array([3e-3, 9e-3, 2.5e-2, 7e-2]),
+    }
+    sim0 = det.gaussian_null(null_scene, template, error_scale=0.0)
+    mc = det.injection_recovery(
+        vm.BinaryModelCartesian,
+        null_scene,
+        template,
+        grid,
+        0,
+        n_null=4,
+        injections=injections,
+        noise=sim0,
+        match_radius=3.0,
+        draw_batch=2,
+        uncertainty=False,
+        progress=False,
+    )
+    assert mc.n_null == 4 and mc.n_injected == 4
+    assert mc.meta["uncertainty"] is False
+    for part in (mc.null, mc.injected):
+        assert np.all(np.isnan(np.asarray(part["max_snr"])))
+        assert np.all(np.isnan(np.asarray(part["flux_peak_steps"])))
+        assert np.all(np.asarray(part["converged_fraction"]) == 1.0)
+
+    worst_dc2, worst_logb, worst_flux = 0.0, 0.0, 0.0
+    want_null = _our_grid_search(ours.load(tpl_path), grid)
+    for i in range(mc.n_null):
+        worst_dc2 = max(worst_dc2, abs(float(mc.null["delta_chi2"][i]) - want_null["delta_chi2"]))
+        worst_logb = max(
+            worst_logb,
+            abs(float(mc.null["log_bayes_factor"][i]) - want_null["log_bayes_factor"])
+            / max(1.0, abs(want_null["log_bayes_factor"])),
+        )
+        worst_flux = max(worst_flux, abs(float(mc.null["best_flux"][i]) - want_null["best_flux"]))
+    for k in range(mc.n_injected):
+        inj_path = tmp_path / f"inj_{k}.fits"
+        simulate.observe(
+            inj_path,
+            _binary_vis(float(injections["flux"][k]), float(injections["dra"][k]), float(injections["ddec"][k])),
+            UTS3,
+            rng=None,
+            **obs_kw,
+        )
+        want = _our_grid_search(ours.load(inj_path), grid)
+        worst_dc2 = max(
+            worst_dc2,
+            abs(float(mc.injected["delta_chi2"][k]) - want["delta_chi2"]) / max(1.0, want["delta_chi2"]),
+        )
+        worst_logb = max(
+            worst_logb,
+            abs(float(mc.injected["log_bayes_factor"][k]) - want["log_bayes_factor"])
+            / max(1.0, abs(want["log_bayes_factor"])),
+        )
+        worst_flux = max(
+            worst_flux,
+            abs(float(mc.injected["best_flux"][k]) - want["best_flux"]) / want["best_flux"],
+        )
+        assert float(mc.injected["best_dra"][k]) == pytest.approx(want["best_dra"], abs=1e-12)
+        assert float(mc.injected["best_ddec"][k]) == pytest.approx(want["best_ddec"], abs=1e-12)
+    assert np.all(mc.matched())
+    assert np.all(mc.detected("delta_chi2", 0.25))
+
+    # Noisy draws: a 4-residual OIFITS file (3 V^2 + 1 CP active on channel 0)
+    # has 2^4 exact bootstrap_null sign-flip states; every realized draw must
+    # equal one state's independent grid search.
+    boot_kw = dict(
+        hour_angles_h=np.array([0.5]),
+        wavelengths=np.array([1.8e-6, 2.2e-6]),
+        dec_deg=-45.0,
+        sigma_v2=0.015,
+        sigma_cp_deg=0.8,
+    )
+    clean_b = tmp_path / "boot_clean.fits"
+    noisy_b = tmp_path / "boot_noisy.fits"
+    simulate.observe(clean_b, _binary_vis(0.0, 0.0, 0.0), UTS3, rng=None, **boot_kw)
+    simulate.observe(noisy_b, _binary_vis(0.0, 0.0, 0.0), UTS3, rng=np.random.default_rng(2026), **boot_kw)
+    with fits.open(noisy_b, mode="update") as hdul:
+        hdul["OI_VIS2"].data["VIS2DATA"][:, 1] = 1.0
+        hdul["OI_T3"].data["T3PHI"][:, 1] = 0.0
+    d_bc = ours.load(clean_b)
+    d_bn = ours.load(noisy_b)
+    res_v2 = d_bn["v2"] - d_bc["v2"]
+    res_cp = d_bn["cp"] - d_bc["cp"]
+
+    grid_b = {
+        "dra": np.linspace(-8.0, 8.0, 4),
+        "ddec": np.linspace(-8.0, 8.0, 4),
+        "flux": np.geomspace(2e-4, 2e-1, 35),
+    }
+    inj_b = {
+        "dra": np.array([8.0, -4.2]),
+        "ddec": np.array([-8.0, 3.8]),
+        "flux": np.array([2.5e-2, 4e-2]),
+    }
+    boot_oi = OIData(str(noisy_b))
+    mc_noisy = det.injection_recovery(
+        vm.BinaryModelCartesian,
+        null_scene,
+        boot_oi,
+        grid_b,
+        12345,
+        n_null=24,
+        injections=inj_b,
+        noise=det.bootstrap_null(null_scene, boot_oi),
+        draw_batch=4,
+        uncertainty=False,
+        progress=False,
+    )
+    assert mc_noisy.meta["uncertainty"] is False
+    for part in (mc_noisy.null, mc_noisy.injected):
+        assert np.all(np.isnan(np.asarray(part["max_snr"])))
+        assert np.all(np.isnan(np.asarray(part["flux_peak_steps"])))
+        assert np.all(np.asarray(part["converged_fraction"]) == 1.0)
+
+    def states(d_clean):
+        for signs in itertools.product((-1.0, 1.0), repeat=4):
+            d_s = dict(d_clean)
+            sv = np.ones_like(res_v2)
+            sv[:, 0] = signs[:3]
+            sp = np.ones_like(res_cp)
+            sp[:, 0] = signs[3]
+            d_s["v2"] = d_clean["v2"] + sv * res_v2
+            d_s["cp"] = d_clean["cp"] + sp * res_cp
+            yield _our_grid_search(d_s, grid_b)
+
+    def mismatch(part, i, ref, null):
+        """Worst error of one draw against one reference state, and the three
+        scored components (as in the full-path check: a null's flux error is
+        absolute, an injected one relative)."""
+        e_dc2 = abs(float(part["delta_chi2"][i]) - ref["delta_chi2"]) / max(1.0, ref["delta_chi2"])
+        e_lb = abs(float(part["log_bayes_factor"][i]) - ref["log_bayes_factor"]) / max(
+            1.0, abs(ref["log_bayes_factor"])
+        )
+        e_f = abs(float(part["best_flux"][i]) - ref["best_flux"])
+        if not null:
+            e_f /= max(1e-6, ref["best_flux"])
+        # a null draw with no companion signal has an arbitrary best position
+        if not null or ref["delta_chi2"] > 1e-8:
+            e_pos = max(
+                abs(float(part["best_dra"][i]) - ref["best_dra"]),
+                abs(float(part["best_ddec"][i]) - ref["best_ddec"]),
+            )
+        else:
+            e_pos = 0.0
+        return max(e_dc2, e_lb, e_f, e_pos), (e_dc2, e_lb, e_f)
+
+    null_catalog = list(states(d_bc))
+    matched_states = set()
+    for i in range(mc_noisy.n_null):
+        errs = [mismatch(mc_noisy.null, i, ref, True) for ref in null_catalog]
+        s_idx = int(np.argmin([e[0] for e in errs]))
+        tot, (e_dc2, e_lb, e_f) = errs[s_idx]
+        matched_states.add(s_idx)
+        assert tot < 1e-5
+        worst_dc2, worst_logb, worst_flux = max(worst_dc2, e_dc2), max(worst_logb, e_lb), max(worst_flux, e_f)
+    assert len(matched_states) >= 6  # per-draw PRNG key splitting
+    assert np.any(mc_noisy.null["delta_chi2"] == 0.0) and np.any(mc_noisy.null["delta_chi2"] > 0.5)
+
+    for k in range(mc_noisy.n_injected):
+        pk = tmp_path / f"boot_inj_{k}.fits"
+        simulate.observe(
+            pk,
+            _binary_vis(float(inj_b["flux"][k]), float(inj_b["dra"][k]), float(inj_b["ddec"][k])),
+            UTS3,
+            rng=None,
+            **boot_kw,
+        )
+        errs = [mismatch(mc_noisy.injected, k, ref, False) for ref in states(ours.load(pk))]
+        tot, (e_dc2, e_lb, e_f) = min(errs, key=lambda e: e[0])
+        assert tot < 1e-5
+        worst_dc2, worst_logb, worst_flux = max(worst_dc2, e_dc2), max(worst_logb, e_lb), max(worst_flux, e_f)
+
+    record("max_rel_ddelta_chi2_stats_only", worst_dc2)
+    record("max_rel_dlogB_stats_only", worst_logb)
+    record("max_rel_dflux_stats_only", worst_flux)
+    assert worst_dc2 < 1e-5
+    assert worst_logb < 1e-5
+    assert worst_flux < 1e-5
+
+
+def _tiny_statistics_only_runs(tmp_path):
+    """A noisy ``uncertainty=False`` run and an ``uncertainty=True`` one on a
+    one-snapshot template (no search comparison here, only container
+    behaviour)."""
+    path = tmp_path / "tiny.fits"
+    simulate.observe(
+        path,
+        _binary_vis(0.0, 0.0, 0.0),
+        UTS3,
+        rng=np.random.default_rng(1),
+        hour_angles_h=np.array([0.5]),
+        wavelengths=np.array([1.8e-6, 2.2e-6]),
+        dec_deg=-45.0,
+        sigma_v2=0.015,
+        sigma_cp_deg=0.8,
+    )
+    template = OIData(str(path))
+    null_scene = vm.BinaryModelCartesian(0.0, 0.0, 0.0)
+    grid = {
+        "dra": np.linspace(-8.0, 8.0, 4),
+        "ddec": np.linspace(-8.0, 8.0, 4),
+        "flux": np.geomspace(2e-4, 2e-1, 12),
+    }
+    inj = {"dra": np.array([8.0]), "ddec": np.array([-8.0]), "flux": np.array([4e-2])}
+
+    def run(uncertainty, seed):
+        return det.injection_recovery(
+            vm.BinaryModelCartesian,
+            null_scene,
+            template,
+            grid,
+            seed,
+            n_null=6,
+            injections=inj,
+            uncertainty=uncertainty,
+            progress=False,
+        )
+
+    return run(False, 1), run(True, 2)
+
+
+@pytest.mark.slow
+@pytest.mark.validates(
+    "virgil.detection.DetectionMC",
+    "virgil.detection.injection_recovery",
+    roots=["mathematics"],
+    kind="finding",
+    headline="max_snr_fap_on_nan_draws",
+    tier="B",
+)
+@pytest.mark.xfail(
+    strict=True,
+    raises=AssertionError,
+    reason=(
+        "F32: on an uncertainty=False run every max_snr is NaN, yet false_alarm_probability, threshold and completeness "
+        "return a finite 1/(n+1), (nan, nan) and 0.0 instead of raising ValueError, so a significance "
+        "statistic that was never computed reads as 'no detection'."
+    ),
+)
+def test_f32_statistics_only_max_snr_queries_raise(tmp_path):
+    """F32 (a): max_snr is documented NaN on an ``uncertainty=False`` run; querying it
+    must raise rather than return a value built from NaNs (expected: ValueError;
+    virgil returns FAP = 1/(n_null+1))."""
+    mc_false, _ = _tiny_statistics_only_runs(tmp_path)
+    assert np.all(np.isnan(np.asarray(mc_false.null["max_snr"])))
+    fap = mc_false.false_alarm_probability("max_snr", 3.0)[0]
+    record("max_snr_fap_on_nan_draws", float(fap))
+    for query in (
+        lambda: mc_false.false_alarm_probability("max_snr", 3.0),
+        lambda: mc_false.threshold("max_snr", 0.25),
+        lambda: mc_false.completeness("max_snr", 0.25),
+    ):
+        try:
+            query()
+        except ValueError:
+            continue
+        raise AssertionError("a max_snr query on an uncertainty=False run returned instead of raising ValueError")
+
+
+@pytest.mark.validates(
+    "virgil.detection.DetectionMC",
+    roots=["mathematics"],
+    kind="finding",
+    headline="merged_max_snr_nan_draws",
+)
+@pytest.mark.xfail(
+    strict=True,
+    raises=AssertionError,
+    reason=(
+        "F32: DetectionMC.concatenate merges uncertainty=False with uncertainty=True runs (meta['uncertainty'] "
+        "becomes True of the first) so NaN max_snr draws are scored as -inf and deflate max_snr false-alarm "
+        "probabilities; it should raise ValueError like the other metadata mismatches."
+    ),
+)
+def test_f32_concatenate_refuses_mixed_uncertainty(tmp_path):
+    """F32 (b): runs that differ in ``uncertainty`` do not share a null distribution for
+    max_snr; concatenate must raise ValueError as it does for other mismatched metadata."""
+    mc_false, mc_true = _tiny_statistics_only_runs(tmp_path)
+    try:
+        merged = det.DetectionMC.concatenate([mc_true, mc_false])
+    except ValueError:
+        return
+    record("merged_max_snr_nan_draws", float(np.isnan(np.asarray(merged.null["max_snr"])).sum()))
+    raise AssertionError(
+        f"concatenate merged uncertainty=True and uncertainty=False runs into meta uncertainty={merged.meta.get('uncertainty')}"
+    )
 
 
 @pytest.mark.validates(

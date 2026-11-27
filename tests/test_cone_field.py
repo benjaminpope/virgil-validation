@@ -80,8 +80,9 @@ def cone_reference(u, v, c, dra=0.0, ddec=0.0):
     return sky.visibility(cloud, u, v, WL) * sky.gaussian_blur_factor(u, v, WL, c["width"])
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("c", CONES, ids=["side", "wide-negative-tilt", "down-axis", "in-sky"])
-@pytest.mark.validates("virgil.models.TruncatedCone", roots=["mathematics"])
+@pytest.mark.validates("virgil.models.TruncatedCone", roots=["mathematics"], tier="B")
 def test_truncated_cone_against_a_3d_cloud(c):
     u, v = baselines()
     want = cone_reference(u, v, c, dra=1.5, ddec=-2.0)
@@ -150,7 +151,8 @@ def test_gaussian_field_covariance(length, order):
     assert np.trace(got) / got.shape[0] == pytest.approx(sigma**2, rel=1e-12)
 
 
-@pytest.mark.validates("virgil.fields.GaussianField", roots=["mathematics"])
+@pytest.mark.slow
+@pytest.mark.validates("virgil.fields.GaussianField", roots=["mathematics"], tier="B")
 def test_order_one_prior_is_squared_variation_plus_l2():
     """With order 1, the whitened prior 1/2 |z|^2 is c (|eta|^2 / l^2 +
     sum of squared neighbour differences / h^2) for a zero-mean field."""
@@ -168,7 +170,8 @@ def test_order_one_prior_is_squared_variation_plus_l2():
     assert spectrum[0, 0] == 0.0
 
 
-@pytest.mark.validates("virgil.fields.GaussianField", "virgil.models.Image", roots=["mathematics"])
+@pytest.mark.slow
+@pytest.mark.validates("virgil.fields.GaussianField", "virgil.models.Image", roots=["mathematics"], tier="B")
 def test_gaussian_field_template_and_image():
     shape, h = (9, 9), 0.4
     rng = np.random.default_rng(3)

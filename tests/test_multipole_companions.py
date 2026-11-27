@@ -190,7 +190,8 @@ def test_gaussian_ring_matches_closed_form_centre_and_quadrature_ring():
     assert err_r < 1e-8
 
 
-@pytest.mark.validates("virgil.models.GaussianRing", roots=["mathematics"], kind="control")
+@pytest.mark.slow
+@pytest.mark.validates("virgil.models.GaussianRing", roots=["mathematics"], kind="control", tier="B")
 def test_gaussian_ring_sigma_is_not_fwhm():
     """Passing FWHM (2.355 sigma) in place of sigma produces a much broader GaussianRing."""
     u, v = R.baselines(100, q_max=6e7, seed=24)
@@ -569,8 +570,9 @@ def test_image_harmonics_round_trip_linear_positive_and_von_mises():
     assert err < 1e-12
 
 
+@pytest.mark.slow
 @pytest.mark.validates("virgil.harmonics.from_image_harmonics", "virgil.harmonics.to_image_harmonics",
-                       roots=["mathematics"], kind="control")
+                       roots=["mathematics"], kind="control", tier="B")
 def test_from_image_harmonics_positive_rejects_negative_profile_and_conjugation():
     """from_image_harmonics(..., form='positive') refuses an image that goes negative, and conjugating I_m flips sky phase."""
     # 1 + 1.4 cos(theta) dips to -0.4 at theta = pi -> I_1 = 0.7 has no Fejér-Riesz factorization
@@ -723,7 +725,8 @@ def test_legacy_conversions_distinguish_rim_and_cone_conventions():
 
 
 # ------------------------------------------------ virgil.fields.MultipoleField
-@pytest.mark.validates("virgil.fields.MultipoleField", roots=["mathematics"], headline="max_rel_cov_err")
+@pytest.mark.slow
+@pytest.mark.validates("virgil.fields.MultipoleField", roots=["mathematics"], headline="max_rel_cov_err", tier="B")
 def test_multipole_field_polar_covariance_and_origin_regularity():
     """On an annulus (r_min_mas > 0) MultipoleField induces the separable Matérn radial x periodic-azimuthal
     covariance; at r = 0 (r_min_mas = 0) all m != 0 modes vanish so the origin is single-valued with variance
@@ -775,7 +778,8 @@ def test_multipole_field_polar_covariance_and_origin_regularity():
     assert origin_var < 0.5 * sigma**2
 
 
-@pytest.mark.validates("virgil.fields.MultipoleField", roots=["mathematics"], headline="max_rel_cov_err_lr")
+@pytest.mark.slow
+@pytest.mark.validates("virgil.fields.MultipoleField", roots=["mathematics"], headline="max_rel_cov_err_lr", tier="B")
 def test_f25_multipole_field_origin_taper_uses_physical_length_r_and_is_grid_invariant():
     """On a full disk (r_min_mas = 0), MultipoleField tapers order m by tanh(r / length_r)^|m| (F25 fixed in
     virgil#673) so the polar prior covariance depends only on physical radius and is invariant when n_r is refined."""
@@ -821,7 +825,8 @@ def test_f25_multipole_field_origin_taper_uses_physical_length_r_and_is_grid_inv
     assert refinement_drift < 1e-12
 
 
-@pytest.mark.validates("virgil.fields.MultipoleField", roots=["mathematics"], headline="max_abs_dV")
+@pytest.mark.slow
+@pytest.mark.validates("virgil.fields.MultipoleField", roots=["mathematics"], headline="max_abs_dV", tier="B")
 def test_multipole_field_image_visibility_and_tied_system_geometry():
     """MultipoleField.evaluate and Image(MultipoleField) match an independent latent-to-sky polar interpolation
     and 2D pixel DFT, and geometry_from='disk' maps sibling disk coordinates into a rotated, shifted Image frame."""
@@ -886,7 +891,8 @@ def test_multipole_field_image_visibility_and_tied_system_geometry():
     assert err < 1e-8
 
 
-@pytest.mark.validates("virgil.fields.MultipoleField", roots=["mathematics"], kind="control")
+@pytest.mark.slow
+@pytest.mark.validates("virgil.fields.MultipoleField", roots=["mathematics"], kind="control", tier="B")
 def test_multipole_field_rejects_rotated_pa_or_flipped_east_axis():
     """Rotating MultipoleField's PA by 90 deg or flipping the East sky sign breaks visibility agreement."""
     npix, scale = 40, 1.0

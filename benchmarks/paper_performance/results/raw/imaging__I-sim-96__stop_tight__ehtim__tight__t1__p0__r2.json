@@ -1,0 +1,98 @@
+{
+ "case": "I-sim-96",
+ "comparison": "imaging",
+ "code": "ehtim",
+ "config": "tight",
+ "threads": 1,
+ "size": "full",
+ "status": "ok",
+ "t_process": 0.34570730503764935,
+ "t_calib": 0.2505466850125231,
+ "t_import": 1.822325285000261,
+ "t_load": 0.0036945909960195422,
+ "t_init": null,
+ "t_cold": 75.57330185198225,
+ "t_warm": [
+  75.51985006598989,
+  74.1494208079821,
+  74.63663505399018,
+  74.75574920000508,
+  74.75939044202096
+ ],
+ "peak_footprint_mb": 319.56,
+ "peak_rss_mb": 319.56,
+ "baseline_mb": null,
+ "cpu_ratio": 0.994350466554788,
+ "flags": [],
+ "n_data": 312,
+ "n_param": 9216,
+ "iterations": {
+  "objfunc": 5522,
+  "objgrad": 5522
+ },
+ "accuracy": {
+  "flux": 1.0005186780348878,
+  "score": {
+   "J": 136.33813219401802,
+   "half_chi2_amp": 84.88411283985907,
+   "half_chi2_cp": 27.5803658755908,
+   "tv2": 3.183153797142419e-05,
+   "flux": 1.0005186780348878,
+   "n_amp": 234,
+   "n_cp": 78,
+   "ncc_registered": 0.9900354578326268,
+   "ncc_shift_rc": [
+    -2,
+    2
+   ],
+   "ncc_unregistered": 0.9401695974267734,
+   "rms_rel_beam": 0.035220471032490035,
+   "beam_mas": 1.5448696219530984
+  }
+ },
+ "settings": {
+  "case": "I-sim-96",
+  "task": "stop_tight",
+  "reps": 5,
+  "size": "full",
+  "maxit": 5000,
+  "stop": 1e-12,
+  "run": "r2",
+  "jax_cache": "cold",
+  "device": "cpu",
+  "method": null
+ },
+ "provenance": {
+  "vv_commit": null,
+  "vv_dirty": false,
+  "virgil_pin": "09b268521072a83f73bc0a77defa6485db270c7b",
+  "versions": {
+   "virgil-astro": null,
+   "jax": null,
+   "jaxlib": null,
+   "numpyro": null,
+   "pmoired": null,
+   "ehtim": "1.3.2",
+   "numpy": "2.5.3",
+   "scipy": "1.18.1",
+   "arviz": null,
+   "astropy": "8.0.1"
+  },
+  "python": "3.12.7",
+  "macos": "",
+  "chip": "AMD EPYC 7543 32-Core Processor",
+  "cpu_count": 64,
+  "thread_env": {
+   "OMP_NUM_THREADS": "1",
+   "OPENBLAS_NUM_THREADS": "1",
+   "VECLIB_MAXIMUM_THREADS": "1",
+   "MKL_NUM_THREADS": "1",
+   "NUMEXPR_NUM_THREADS": "1",
+   "XLA_FLAGS": "--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1 --xla_cpu_parallel_codegen_split_count=1 --xla_cpu_use_xnnpack=false --xla_cpu_enable_concurrency_optimized_scheduler=false",
+   "JAX_PLATFORMS": "cpu",
+   "JULIA_NUM_THREADS": "1"
+  },
+  "data_manifest_sha256": "9ff0c4e5432d399dab1b2db62ae15a4b3066af304147876be59a21020f540205"
+ },
+ "language": "python"
+}

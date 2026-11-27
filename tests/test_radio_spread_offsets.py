@@ -130,8 +130,9 @@ def _tolerances(case, values):
     return np.array(chi2_tol), tol
 
 
+@pytest.mark.slow
 @needs_toeplitz
-@pytest.mark.validates("virgil.radio_toeplitz.ToeplitzVisData", roots=["mathematics"], headline="max_grad_relative_error")
+@pytest.mark.validates("virgil.radio_toeplitz.ToeplitzVisData", roots=["mathematics"], headline="max_grad_relative_error", tier="B")
 @pytest.mark.parametrize("point", ["start", "moved", "edge"])
 def test_spread_offsets_chi2_and_gradient_equal_the_exact_reference_within_the_documented_error(point):
     """Per-ddid chi-squared and the gradient of the chi-squared in every fitted site (image logits, flux,
@@ -187,7 +188,8 @@ TRUE_OFFSETS = np.array([[0.0, 0.0], [3.1, -2.2], [-1.7, 4.4]])
 
 
 @needs_toeplitz
-@pytest.mark.validates("virgil.radio_toeplitz.ToeplitzVisData", roots=["statistics", "mathematics"], headline="recovery_max_abs_z")
+@pytest.mark.slow
+@pytest.mark.validates("virgil.radio_toeplitz.ToeplitzVisData", roots=["statistics", "mathematics"], headline="recovery_max_abs_z", tier="B")
 def test_fitted_offsets_recover_injected_offsets_within_the_fisher_scatter():
     """Simulate (numpy, exact DFT, Gaussian noise of variance 1/w in each of Re and Im, so that exp(-chi2/2) is
     the likelihood) 600 visibilities of a 16 x 16 image in three observations with injected offsets (3.1, -2.2)
@@ -292,8 +294,9 @@ def test_offsets_exactly_at_the_bound_evaluate_and_equal_the_reference(offsets):
     assert diff < tol["cal.offset"]
 
 
+@pytest.mark.slow
 @needs_toeplitz
-@pytest.mark.validates("virgil.radio_toeplitz.ToeplitzVisData", roots=["mathematics"], kind="guard")
+@pytest.mark.validates("virgil.radio_toeplitz.ToeplitzVisData", roots=["mathematics"], kind="guard", tier="B")
 @pytest.mark.parametrize("which", [(0, 0, 1.0), (0, 1, -1.0), (1, 0, -1.0), (1, 1, 1.0)],
                          ids=["obs1_x+", "obs1_y-", "obs2_x-", "obs2_y+"])
 def test_an_offset_just_past_the_bound_is_refused_in_value_and_gradient(which):
@@ -320,8 +323,9 @@ def test_an_offset_just_past_the_bound_is_refused_in_value_and_gradient(which):
         eqx.filter_grad(lambda v: term.chi2_and_log_norm(v)[0])({k: jnp.asarray(v, float) for k, v in values.items()})
 
 
+@pytest.mark.slow
 @needs_toeplitz
-@pytest.mark.validates("virgil.radio_toeplitz.ToeplitzVisData", roots=["mathematics"], kind="guard")
+@pytest.mark.validates("virgil.radio_toeplitz.ToeplitzVisData", roots=["mathematics"], kind="guard", tier="B")
 def test_the_default_bound_is_the_prior_box_of_the_nuisance():
     """Documented: without ``max_offset_mas`` the bound is that of ``nuisance.priors()`` (the offsets' prior
     box, read here from the prior's own limits, 60.18 mas for this nuisance): an offset a part in 1e9 inside the

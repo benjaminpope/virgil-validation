@@ -1000,6 +1000,7 @@ def test_build_hdulist_oifits2_headers_units_and_crosscheck_load(tmp_path):
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.slow
 @pytest.mark.validates(
     "virgil.gains.ClosureOffsets",
     "virgil.gains.closure_offsets",
@@ -1007,6 +1008,7 @@ def test_build_hdulist_oifits2_headers_units_and_crosscheck_load(tmp_path):
     "virgil.oidata.OIData",
     roots=["mathematics"],
     headline="gain_marginal_loglike_err",
+    tier="B",
 )
 def test_042_closure_offsets_scale_penalty_and_gains_include_extras(tmp_path):
     """Pin 0.4.2 ClosureOffsets(scale_penalty=True/False) periodic wrap-penalty
