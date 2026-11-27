@@ -446,14 +446,15 @@ def find_stored_compare(stored_dir, target):
     """Stored ``compare_images.npz``: nightw unbounded if it exists, else the newest of the stored ones."""
     if not stored_dir:
         return None
-    pats = [f"{target}_gp-polar_nightw_unbounded_compare_images.npz", f"{target}_gp-polar*_compare_images.npz"]
+    pats = [f"{target}_gp-polar_nightw_unbounded_compare_images.npz", f"{target}_gp-polar_unbounded_compare_images.npz",
+            f"{target}_gp-polar_compare_images.npz", f"{target}_gp-polar*_compare_images.npz"]
     root = pathlib.Path(stored_dir)
-    for pat in pats:
+    for pat in pats:  # the named products first (the default-noise run for targets without nightw), then any gp-polar one
         hits = sorted(root.rglob(pat))
         if not hits:
             continue
         hits = [h for h in hits if PREFERRED_STORED_RUN in h.parts] or hits
-        return str(max(hits, key=os.path.getmtime) if pat == pats[-1] else hits[0])
+        return str(max(hits, key=os.path.getmtime))
     return None
 
 
@@ -538,6 +539,18 @@ def _unit(img):
     return img / s if s != 0 else img
 
 
+def _draw_beam(ax, z, field):
+    """The restoring beam (FWHM ellipse) in the lower-left corner of a sky panel."""
+    from matplotlib.patches import Ellipse
+
+    sx, sy, phi = (float(v) for v in z["beam_pix"])
+    pix = float(z["pixel_mas"])
+    fw = 2.0 * math.sqrt(2.0 * math.log(2.0))
+    # an axis at (cos phi, sin phi) in (column, row) pixels is, in (East, North) data axes, the axis at angle phi
+    ax.add_patch(Ellipse((0.8 * field, -0.8 * field), fw * sx * pix, fw * sy * pix, angle=math.degrees(phi), fill=False,
+                         ec="w", lw=1))
+
+
 def compare_stage(out, target, stored_dir=None):
     """Write ``<T>_param_compare.png``: parametric / gp-polar / ORGANIC on one scale, residuals below."""
     import matplotlib
@@ -554,8 +567,10 @@ def compare_stage(out, target, stored_dir=None):
     zs = np.load(stored, allow_pickle=True) if stored else None
     pix = float(z["pixel_mas"])
     panels = [("ring (this work)", _unit(z["convolved"]))]
-    if zs is not None:
+    if zs is not None and zs["ours_conv"].shape == z["convolved"].shape and np.isclose(float(zs["pixel_mas"]), pix):
         panels += [("gp-polar", _unit(zs["ours_conv"])), ("ORGANIC", _unit(zs["published_conv"]))]
+    elif zs is not None:  # render was run against another stored grid: do not compare images on different grids
+        print(f"{target}: stored products are on a different grid from the rendered image; not plotted", file=sys.stderr)
     half = 0.5 * z["convolved"].shape[0] * pix
     r_out = float(z["r0"]) + 3 * float(z["sigma"])
     field = min(half, max(1.6 * r_out, 6.0))
@@ -563,26 +578,28 @@ def compare_stage(out, target, stored_dir=None):
     resid = t["dir"] / f"{target}_param_residuals.npz"
     res = np.load(resid) if resid.exists() else None
 
-    fig = plt.figure(figsize=(3.6 * len(panels), 7.2), constrained_layout=True)
+    fig = plt.figure(figsize=(max(3.6 * len(panels), 7.0), 7.2), constrained_layout=True)
     npan = len(panels)
     gs = fig.add_gridspec(2, 2 * npan, height_ratios=[1.0, 0.6])
     for i, (name, im) in enumerate(panels):
         ax = fig.add_subplot(gs[0, 2 * i : 2 * i + 2])
-        ax.imshow(im, origin="upper", extent=[half, -half, -half, half], vmin=0, vmax=vmax, cmap="inferno")
+        mappable = ax.imshow(im, origin="upper", extent=[half, -half, -half, half], vmin=0, vmax=vmax, cmap="inferno")
         ax.set_xlim(field, -field)  # East left
         ax.set_ylim(-field, field)
         ax.plot(0, 0, "c+", ms=10)
         if np.isfinite(z["sec_dra"]) and np.isfinite(z["sec_ddec"]):
             ax.plot(float(z["sec_dra"]), float(z["sec_ddec"]), "wx", ms=7)
+        _draw_beam(ax, z, field)
         label = name if i == 0 else f"{name}  NCC {ncc(panels[0][1], im):.2f}"
         ax.set_title(label, fontsize=9)
         ax.set_xlabel("East offset (mas)")
         if i == 0:
             ax.set_ylabel("North offset (mas)")
+    fig.colorbar(mappable, ax=fig.axes[:npan], shrink=0.7, label="fraction of flux per pixel")
     axv = fig.add_subplot(gs[1, :npan])
     axc = fig.add_subplot(gs[1, npan:])
-    for ax, (bk, rk, ylab) in ((axv, ("v2_baseline_m", "v2_resid", r"V$^2$ residual ($\sigma$)")),
-                               (axc, ("cp_baseline_m", "cp_resid", r"closure residual ($\sigma$)"))):
+    for ax, (bk, rk, ylab) in ((axv, ("v2_baseline_m", "v2_resid", r"V$^2$ residual (quoted $\sigma$)")),
+                               (axc, ("cp_baseline_m", "cp_resid", r"closure residual (quoted $\sigma$)"))):
         if res is not None and bk in res.files and rk in res.files:
             ax.plot(res[bk], res[rk], ".", ms=3)
             ax.axhline(0, color="k", lw=0.5)
@@ -622,26 +639,35 @@ def _accepted_steps(tdata, arm="N2"):
     return [s for s in a.get("chain") or [] if _accepted(s)]
 
 
-def _unverified_sources(tdata, fit):
-    """Where ``evidence_unverified`` is flagged under N2: M0, the selected fit, or an accepted chain step.
+def _selected_vs_m0_steps(tdata):
+    """Accepted N2 chain steps that test the *selected* model against M0 (``M1/M0``, or ``M2/M0``, ``M2o/M0`` when M1 has
+    no eligible fit). Steps between unselected intermediate rungs do not bear on the selected evidence: their flags (an
+    unselected rung with a low ESS, say) say nothing about a selected fit and M0 that are themselves verified."""
+    model = selected_model(tdata, "N2")
+    out = []
+    for s in _accepted_steps(tdata):
+        child, _, parent = str(s.get("pair", "")).replace(" ", "").partition("/")
+        if child == model and (s.get("against") or s.get("parent") or parent) == "M0":
+            out.append(s)
+    return out
 
-    The accepted steps include the ring-over-blob one, which is ``M1/M0`` or, when M1 has no eligible fit,
-    ``M2/M0`` or ``M2o/M0``.
-    """
+
+def _unverified_sources(tdata, fit):
+    """Where ``evidence_unverified`` is flagged under N2: M0, the selected fit, or the selected-versus-M0 chain step."""
     out = []
     if "evidence_unverified" in _fit_flags(tdata["models"].get(("M0", "N2", None))):
         out.append("M0")
     if "evidence_unverified" in _fit_flags(fit):
         out.append("the selected fit")
-    for step in _accepted_steps(tdata):
+    for step in _selected_vs_m0_steps(tdata):
         if "evidence_unverified" in (step.get("flags") or []):
             out.append(f"accepted step {str(step.get('pair', '?')).replace(' ', '')}")
     return out
 
 
 def _chain_flags(tdata):
-    """Flags of the accepted N2 chain steps."""
-    return {f for s in _accepted_steps(tdata) for f in s.get("flags") or []}
+    """Flags of the accepted N2 step of the selected model against M0."""
+    return {f for s in _selected_vs_m0_steps(tdata) for f in s.get("flags") or []}
 
 
 def multimodal_competitor(fit, p):
@@ -839,10 +865,10 @@ def table_row(tdata, image, pmoired):
     sel_n2 = model
     if sel_n1 and sel_n2:
         f1 = selected_fit(tdata, "N1")
-        flagged = "arm_dependent" in _fit_flags(fit)
+        flagged = bool("arm_dependent" in _fit_flags(fit) or (tdata["selected"] or {}).get("arm_dependent")
+                       or sel_n1 != sel_n2 or (f1 is None) != (fit is None))
         if f1:
             a = ring_params(f1.get("best"), _derived(f1))
-            flagged = flagged or sel_n1 != sel_n2
             if p and None not in (a["inc"], a["pa"], p["inc"], p["pa"]):
                 flagged = flagged or abs(a["inc"] - p["inc"]) > 15 or abs(_angdiff180(a["pa"], p["pa"])) > 25
         row["arm_dependent"] = flagged
@@ -865,6 +891,10 @@ def table_row(tdata, image, pmoired):
     row["gp_delta"] = {arm: _num((gp.get(arm) or {}).get("delta")) for arm in ("N1", "N2")}
     row["gp_notes"] = {arm: _gp_note(gp.get(arm)) for arm in ("N1", "N2")}
     row["gp_provisional"] = {arm: bool((gp.get(arm) or {}).get("provisional")) for arm in ("N1", "N2")}
+    row["variants"] = {
+        f"{m}/{arm}/{v}": (fit_status(tdata, m, arm, v) or f"lnZ_use {_fmt(_best(f, 'lnZ_use'), 1)}")
+        for (m, arm, v), f in sorted(tdata["models"].items(), key=lambda kv: tuple(str(x) for x in kv[0])) if v
+    }
     row["jackknife_sd"] = jk or None
     # literature comparison
     lit = {}
@@ -965,6 +995,10 @@ def render_markdown(rows):
                 _gp_cell(r, "N1"), _gp_cell(r, "N2"),
             ]) + " |"
         )
+    var = [(r["target"], k, v) for r in rows for k, v in (r.get("variants") or {}).items()]
+    if var:
+        L += ["", "## Variant fits (P2: no secondary, no background, ...)", "", "| target | model/arm/variant | result |", "|---|---|---|"]
+        L += [f"| {a} | {b} | {c} |" for a, b, c in var]
     L += ["", "## Literature comparison (De Prins et al. image ellipse / PMOIRED rim / this work)", "",
           "theta_rim is a diameter (mas), inc and PA in degrees. Ours is the selected N2 model with its jackknife sd; "
           "n_sigma is the difference to the quoted literature sigma.", ""]

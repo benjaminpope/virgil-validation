@@ -185,21 +185,29 @@ def _beam_pair(tmp_path, major, minor, pa, name="IW_Car", run=None):
     return f, beam
 
 
-@pytest.mark.parametrize("pa", [45.0, 135.0])
+def _major_pa(beam):
+    """On-sky PA (East of North, mod 180) of the major axis of a ``(sx, sy, phi)`` beam on the row-0-North grid."""
+    sx, sy, phi = beam
+    pa = np.degrees(np.pi / 2 - phi)
+    return (pa if sx >= sy else pa + 90.0) % 180.0
+
+
+@pytest.mark.parametrize("pa", [25.0, 45.0, 115.0, 135.0])  # 45 and 135 are fixed points of an East-North transpose
 def test_fit_beam_recovers_elliptical_beam_on_axisymmetric_source(tmp_path, pa):
     f, beam = _beam_pair(tmp_path, 1.8, 0.9, pa)
     z = np.load(f)
     got, rms = R.fit_beam(z["ours"], z["ours_conv"])
-    assert rms < 0.02
-    assert sorted(got[:2]) == pytest.approx(sorted(beam[:2]), rel=0.1)
-    assert abs(got[0] - got[1]) > 0.3 * beam[0]  # not trapped on a circular beam
+    assert rms < 1e-3
+    assert sorted(got[:2]) == pytest.approx(sorted(beam[:2]), rel=1e-2)
+    assert abs(R._angdiff180(_major_pa(got), pa)) < 1.0  # recovered orientation, not just the widths
+    assert abs(R._angdiff180(_major_pa(beam), pa)) < 1e-9  # beam_from_mas uses the same sense
 
 
 def test_render_stage_reads_beam_from_compare_json(tmp_path):
     T = "IW_Car"
-    f, beam = _beam_pair(tmp_path, 1.8, 0.9, 45.0, name=T)
+    f, beam = _beam_pair(tmp_path, 1.8, 0.9, 25.0, name=T)
     (f.parent / f"{T}_gp-polar_nightw_unbounded_compare.json").write_text(
-        json.dumps(dict(beam=dict(major_mas=1.8, minor_mas=0.9, pa_deg=45.0))))
+        json.dumps(dict(beam=dict(major_mas=1.8, minor_mas=0.9, pa_deg=25.0))))
     out = tmp_path / "out"
     write_target(out, T, ladder(T), selected_json("M2"))
     z = np.load(R.render_stage(out, T, str(f.parent)), allow_pickle=True)
@@ -333,7 +341,7 @@ def test_jackknife_too_large_and_pa_waived_at_low_inc(tmp_path):
 
 def test_evidence_unverified_and_multimodal_block_usable(tmp_path):
     g = geo(tmp_path, "IRAS15469-5311", ladder("IRAS15469-5311", inc=35.0, pa=51.0),
-            selected_json("M2", chain_flags=["evidence_unverified"]))
+            selected_json("M1", chain_flags=["evidence_unverified"]))  # M1 selected: M1/M0 is its own test against M0
     assert not g["usable_for_gp"] and any("evidence_unverified" in r for r in g["reasons"])
     other = dict(values=_ring_values(65.0, 120.0, 2.4, 0.7), lnZ_lap=-657.0, eligible=True)
     g = geo(tmp_path, "HR4049", ladder("HR4049", inc=48.0, pa=95.0, modes=[other]), selected_json("M2"))
@@ -398,6 +406,42 @@ def test_unverified_ring_over_blob_step_blocks_when_m1_is_ineligible(tmp_path):
     f2 = ladder("HR4049", inc=48.0, pa=95.0, flags=["evidence_unverified"])
     g = geo(tmp_path, "HR4049", f2, selected_json("M2"))
     assert not g["usable_for_gp"] and any("selected fit" in r for r in g["reasons"])
+
+
+def test_unselected_intermediate_flag_does_not_block(tmp_path):
+    sel = selected_json("M2")
+    sel["arms"]["N2"]["chain"] = [
+        dict(pair="M1/M0", accepted=True, against="M0", flags=["evidence_unverified"]),  # M1 is not the selected model
+        dict(pair="M2/M1", accepted=True, against="M1", flags=[]),
+    ]
+    g = geo(tmp_path, "EN_TrA", ladder("EN_TrA", inc=40.0, pa=30.0), sel)
+    assert g["usable_for_gp"] and g["source"] == "ours"
+
+
+def test_arm_dependent_when_n1_has_no_eligible_fit(tmp_path):
+    f = ladder("AI_Sco")
+    f[("M2", "N1", None)]["best"] = None
+    write_target(tmp_path, "AI_Sco", f, selected_json("M2"))
+    R.table_stage(tmp_path)
+    assert json.loads((tmp_path / "postagb_parametric_table.json").read_text())[0]["arm_dependent"] is True
+
+
+def test_variants_listed_in_table(tmp_path):
+    f = ladder("AI_Sco")
+    f[("M2", "N2", "nosec")] = model_json("M2", "N2", w=(0.5,), lnz=-640, variant="nosec")
+    write_target(tmp_path, "AI_Sco", f, selected_json("M2"))
+    text = R.table_stage(tmp_path).read_text()
+    assert "## Variant fits" in text and "M2/N2/nosec" in text
+
+
+def test_stored_search_prefers_named_products_over_other_noise_runs(tmp_path):
+    T = "HR4049"
+    d = tmp_path / "04994a0+46ce208" / T
+    d.mkdir(parents=True)
+    plain, flat = d / f"{T}_gp-polar_compare_images.npz", d / f"{T}_gp-polar_vlti_flat_compare_images.npz"
+    plain.write_bytes(b"")
+    flat.write_bytes(b"")  # the newer, wildcard-only product must not win
+    assert R.find_stored_compare(str(tmp_path), T) == str(plain)
 
 
 def test_missing_target_gets_de_prins_with_reason(tmp_path):
@@ -472,6 +516,9 @@ def test_real_layout_geometry_has_c_s_dra_ddec_d_env(tmp_path):
     g = json.loads(path.read_text())["AI_Sco"]
     ours = g["ours"]  # usable but elsewhere: De Prins geometry is the entry, our fit is kept beside it
     assert g["source"] == "De Prins image"
+    # usable but elsewhere (not "no ring or unstable"): an unselected rung's low ESS must not block the verified M2o
+    assert g["usable_for_gp"] is True and g["branch"].startswith("ours usable but elsewhere")
+    assert any("De Prins" in r for r in g["reasons"])
     for k in ("c", "s", "dra", "ddec", "d_env"):
         assert ours[k] is not None, k
     assert ours["pa"] == pytest.approx(171.6005, abs=1e-3)
