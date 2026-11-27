@@ -21,12 +21,17 @@ module is tolerant about the rest):
 The stored gp-polar/ORGANIC products are read from ``--stored-dir`` (``<T>_gp-polar*_compare_images.npz``).
 
 Angles are degrees, PA East of North, lengths mas; the image grid has row 0 North and column 0 East.
+
+Frames: the core writes ``derived.c`` / ``derived.s`` (the linear harmonic coefficients) in the frame of the *fitted*
+``env.pa``, which is not limited to [0, 180). Wherever this module reports a PA wrapped to [0, 180) (table, geometry
+JSON) it reports ``c, s`` in that wrapped frame too (odd orders negated when the wrap shifts by an odd number of half
+turns, see ``wrap_pa``); ``bright_pa`` is an on-sky angle and is the same in both. ``<T>_param_image.npz`` stores the
+wrapped ``pa`` with ``dra``/``ddec``.
 """
 
 from __future__ import annotations
 
 import argparse
-import glob
 import json
 import math
 import os
@@ -38,12 +43,12 @@ import numpy as np
 
 TARGETS = ["AI_Sco", "EN_TrA", "IRAS15469-5311", "IW_Car", "HD95767", "HD108015", "HR4049", "PS_Gem"]
 ARMS = ("N0", "N1", "N2")
-MODELS = ("M0", "M1", "M2", "M2o", "M3", "M5")
+MODELS = ("M0", "M1", "M2", "M2o", "M3", "M3o", "M5")
+PREFERRED_STORED_RUN = "15b154a+6fa8afe"  # the stored gp-polar run to prefer when several hold a target
 M0_RADIUS = 0.01  # mas, the fixed radius of the centred Gaussian
 
 # IW Car is in neither postagb_paper dict (its image values are in postagb_imaging.TARGETS).
 _IW_CAR_IMAGE = dict(theta_rim=(6.9, None, None), i_rim=(48.0, None, None), pa_rim=(144.0, None, None))
-_AI_SCO_CENTRE = (0.51, -1.4)  # De Prins image centre, mas (East, North)
 
 
 # --- literature values -------------------------------------------------------------------
@@ -272,10 +277,12 @@ def render_ring(p, npix, pixel_mas):
 
 
 def bright_pa(p, n_theta=7200):
-    """On-sky PA (0-360, East of North, about the ring centre) of the brightest point of the ring.
+    """On-sky PA (0-360, East of North, about the ring centre) of the brightest point of the ring; ``None`` if axisymmetric.
 
     The profile is separable, so the maximum is on the ring radius at the azimuth maximising the factor.
     """
+    if not (np.any(p["w"]) or np.any(p["c"]) or np.any(p["s"])):
+        return None  # axisymmetric (M0, M1): there is no brightest azimuth
     theta = np.linspace(0.0, 2 * np.pi, n_theta, endpoint=False)
     f = azimuth_factor(p, theta)
     t = theta[int(np.argmax(f))]
@@ -294,23 +301,62 @@ def hole_contrast(p):
 # --- beam and convolution ----------------------------------------------------------------
 
 
-def _gauss_otf(shape, sx, sy, phi):
-    """Fourier transform (sum-preserving) of an elliptical Gaussian, sigmas ``sx, sy`` pixels, rotated by ``phi``."""
-    ky = np.fft.fftfreq(shape[0])[:, None]
-    kx = np.fft.fftfreq(shape[1])[None, :]
+def beam_kernel(shape, sx, sy, phi):
+    """Unit-sum elliptical Gaussian on an odd pixel grid centred on a pixel (like ``virgil.imaging.convolve_beam``).
+
+    ``sx, sy`` are sigmas in pixels along and across the direction ``(cos phi, sin phi)`` in (column, row) pixel axes.
+    """
+    ny, nx = shape[0] + 1 - shape[0] % 2, shape[1] + 1 - shape[1] % 2
+    x = (np.arange(nx) - nx // 2)[None, :]
+    y = (np.arange(ny) - ny // 2)[:, None]
     c, s = math.cos(phi), math.sin(phi)
-    u = kx * c + ky * s
-    v = -kx * s + ky * c
-    return np.exp(-2 * np.pi**2 * ((sx * u) ** 2 + (sy * v) ** 2))
+    k = np.exp(-0.5 * (((x * c + y * s) / max(sx, 1e-6)) ** 2 + ((-x * s + y * c) / max(sy, 1e-6)) ** 2))
+    return k / k.sum()
 
 
 def convolve(img, beam):
-    """Convolve with a beam ``(sx, sy, phi)`` in pixels."""
-    return np.real(np.fft.ifft2(np.fft.fft2(img) * _gauss_otf(img.shape, *beam)))
+    """Convolve with a beam ``(sx, sy, phi)`` in pixels (linear: flux beyond the edge is zero, nothing wraps)."""
+    from scipy.signal import fftconvolve
+
+    img = np.asarray(img, float)
+    return fftconvolve(img, beam_kernel(img.shape, *beam), mode="same")
+
+
+def beam_from_mas(major_mas, minor_mas, pa_deg, pixel_mas):
+    """``(sx, sy, phi)`` in pixels of a beam given as FWHMs (mas) and PA (East of North) on the row-0-North grid."""
+    fw = 2.0 * math.sqrt(2.0 * math.log(2.0))
+    return (major_mas / fw / pixel_mas, minor_mas / fw / pixel_mas, math.pi / 2 - math.radians(pa_deg))
+
+
+def stored_beam(stored, pixel_mas):
+    """The restoring beam in pixels from the sibling ``<prefix>_compare.json["beam"]``, or ``None`` if absent."""
+    name = os.path.basename(str(stored))
+    suffix = "_compare_images.npz"
+    if not name.endswith(suffix):
+        return None
+    f = pathlib.Path(stored).with_name(name[: -len(suffix)] + "_compare.json")
+    try:
+        b = _load(f).get("beam")
+    except (OSError, ValueError, AttributeError):
+        return None
+    try:
+        if isinstance(b, dict):
+            vals = [float(b[k]) for k in ("major_mas", "minor_mas", "pa_deg")]
+        else:
+            vals = [float(x) for x in b[:3]]
+    except (KeyError, TypeError, ValueError):
+        return None
+    if not (all(math.isfinite(v) for v in vals) and vals[0] > 0 and vals[1] > 0):
+        return None
+    return beam_from_mas(*vals, pixel_mas)
 
 
 def fit_beam(sharp, blurred):
-    """Elliptical Gaussian ``(sx, sy, phi)`` in pixels that maps ``sharp`` to ``blurred``, and the relative rms."""
+    """Elliptical Gaussian ``(sx, sy, phi)`` in pixels that maps ``sharp`` to ``blurred``, and the relative rms.
+
+    Fallback when no ``_compare.json`` beam is stored. The starts break the ``sx == sy`` symmetry (on that manifold the
+    gradient in ``phi`` vanishes and an elliptical beam would stay circular).
+    """
     from scipy.optimize import least_squares
 
     sharp = np.asarray(sharp, float)
@@ -321,9 +367,10 @@ def fit_beam(sharp, blurred):
 
     best = None
     for s0 in (1.0, 3.0, 6.0):
-        sol = least_squares(res, [s0, s0, 0.0])
-        if best is None or sol.cost < best.cost:
-            best = sol
+        for phi0 in (0.0, math.pi / 4):
+            sol = least_squares(res, [1.3 * s0, 0.7 * s0, phi0])
+            if best is None or sol.cost < best.cost:
+                best = sol
     q = best.x
     rms = float(np.sqrt(2 * best.cost / blurred.size) / max(np.abs(blurred).max(), 1e-300))
     return (abs(q[0]), abs(q[1]), float(q[2])), rms
@@ -360,6 +407,13 @@ def read_target(out, target):
     return dict(target=target, dir=d, models=models, selected=selected)
 
 
+def _accepted(step):
+    """Whether a chain step was accepted: its ``accepted`` flag if it has one, else a verdict starting "accept"."""
+    if step.get("accepted") is not None:
+        return bool(step["accepted"])
+    return str(step.get("verdict", "")).lower().startswith("accept")
+
+
 def selected_model(tdata, arm="N2"):
     """Selected model id for ``arm``: the ``selected`` key, else the highest accepted rung of the chain."""
     sel = tdata["selected"] or {}
@@ -370,7 +424,7 @@ def selected_model(tdata, arm="N2"):
         order = list(MODELS)
         chosen = "M0"
         for step in a["chain"]:
-            if str(step.get("verdict", "")).lower().startswith("accept"):
+            if _accepted(step):
                 child = str(step.get("pair", "")).split("/")[0].split(" ")[0]
                 if child in order and order.index(child) > order.index(chosen):
                     chosen = child
@@ -379,9 +433,10 @@ def selected_model(tdata, arm="N2"):
 
 
 def selected_fit(tdata, arm="N2"):
-    """The model JSON of the selected model under ``arm`` (no variant), or ``None``."""
+    """The model JSON of the selected model under ``arm`` (no variant), or ``None`` if absent or without an eligible best."""
     m = selected_model(tdata, arm)
-    return tdata["models"].get((m, arm, None)) if m else None
+    fit = tdata["models"].get((m, arm, None)) if m else None
+    return fit if (fit or {}).get("best") else None
 
 
 # --- stage: render -----------------------------------------------------------------------
@@ -392,12 +447,13 @@ def find_stored_compare(stored_dir, target):
     if not stored_dir:
         return None
     pats = [f"{target}_gp-polar_nightw_unbounded_compare_images.npz", f"{target}_gp-polar*_compare_images.npz"]
+    root = pathlib.Path(stored_dir)
     for pat in pats:
-        hits = []
-        for root in {stored_dir, *glob.glob(os.path.join(stored_dir, "*"))}:
-            hits += glob.glob(os.path.join(root, pat))
-        if hits:
-            return max(hits, key=os.path.getmtime) if pat == pats[-1] else hits[0]
+        hits = sorted(root.rglob(pat))
+        if not hits:
+            continue
+        hits = [h for h in hits if PREFERRED_STORED_RUN in h.parts] or hits
+        return str(max(hits, key=os.path.getmtime) if pat == pats[-1] else hits[0])
     return None
 
 
@@ -415,7 +471,12 @@ def render_stage(out, target, stored_dir=None, npix=128, pixel_mas=0.3):
         z = np.load(stored, allow_pickle=True)
         pixel_mas = float(z["pixel_mas"])
         npix = int(z["ours"].shape[0])
-        beam, beam_rms = fit_beam(z["ours"], z["ours_conv"])
+        beam = stored_beam(stored, pixel_mas)
+        if beam is None:
+            beam, beam_rms = fit_beam(z["ours"], z["ours_conv"])
+        else:  # how well the stored beam maps the stored sharp image onto the stored convolved one
+            ref = np.asarray(z["ours_conv"], float)
+            beam_rms = float(np.sqrt(np.mean((convolve(z["ours"], beam) - ref) ** 2)) / max(np.abs(ref).max(), 1e-300))
         grid_src = os.path.basename(stored)
     img = render_ring(p, npix, pixel_mas)
     if beam is None:
@@ -423,6 +484,7 @@ def render_stage(out, target, stored_dir=None, npix=128, pixel_mas=0.3):
     conv = convolve(img, beam)
     conv = conv / conv.sum()
     d = _derived(fit)
+    bp = bright_pa(p)
     best = fit.get("best") or {}
     values = best.get("values") or {}
     secondary = dict(
@@ -442,10 +504,12 @@ def render_stage(out, target, stored_dir=None, npix=128, pixel_mas=0.3):
         grid_source=grid_src,
         model=selected_model(t, "N2"),
         inc=p["inc"],
-        pa=p["pa"],
+        pa=p["pa"] % 180.0,
+        dra=p["dra"],
+        ddec=p["ddec"],
         r0=p["r0"],
         sigma=p["sigma"],
-        bright_pa=bright_pa(p),
+        bright_pa=np.nan if bp is None else bp,
         star_dra=0.0,
         star_ddec=0.0,
         star_f_pct=_num(d.get("f_prim_pct")) if d.get("f_prim_pct") is not None else np.nan,
@@ -527,9 +591,10 @@ def compare_stage(out, target, stored_dir=None):
         else:
             ax.text(0.5, 0.5, "residuals not available", ha="center", va="center", transform=ax.transAxes)
             ax.set_axis_off()
+    bright = float(z["bright_pa"])
     fig.suptitle(
-        f"{target}: {z['model']}  inc {float(z['inc']):.1f}  PA {float(z['pa']):.1f}  "
-        f"r0 {float(z['r0']):.2f} mas  brightest PA {float(z['bright_pa']):.0f}",
+        f"{target}: {z['model']}  inc {float(z['inc']):.1f}  PA {float(z['pa']):.1f}  r0 {float(z['r0']):.2f} mas"
+        + (f"  brightest PA {bright:.0f}" if np.isfinite(bright) else ""),
         fontsize=10,
     )
     path = t["dir"] / f"{target}_param_compare.png"
@@ -552,17 +617,31 @@ def _fit_flags(fit):
     return list(((fit or {}).get("best") or {}).get("flags") or [])
 
 
-def _m1_over_m0_unverified(tdata):
-    """True if ``evidence_unverified`` is flagged for the M1-over-M0 pair under N2."""
-    a = ((tdata["selected"] or {}).get("arms") or {}).get("N2") or {}
-    for step in a.get("chain") or []:
-        if str(step.get("pair", "")).replace(" ", "").startswith("M1/M0") and "evidence_unverified" in (
-            step.get("flags") or []
-        ):
-            return True
-    return any(
-        "evidence_unverified" in _fit_flags(tdata["models"].get((m, "N2", None))) for m in ("M0", "M1")
-    )
+def _accepted_steps(tdata, arm="N2"):
+    a = ((tdata["selected"] or {}).get("arms") or {}).get(arm) or {}
+    return [s for s in a.get("chain") or [] if _accepted(s)]
+
+
+def _unverified_sources(tdata, fit):
+    """Where ``evidence_unverified`` is flagged under N2: M0, the selected fit, or an accepted chain step.
+
+    The accepted steps include the ring-over-blob one, which is ``M1/M0`` or, when M1 has no eligible fit,
+    ``M2/M0`` or ``M2o/M0``.
+    """
+    out = []
+    if "evidence_unverified" in _fit_flags(tdata["models"].get(("M0", "N2", None))):
+        out.append("M0")
+    if "evidence_unverified" in _fit_flags(fit):
+        out.append("the selected fit")
+    for step in _accepted_steps(tdata):
+        if "evidence_unverified" in (step.get("flags") or []):
+            out.append(f"accepted step {str(step.get('pair', '?')).replace(' ', '')}")
+    return out
+
+
+def _chain_flags(tdata):
+    """Flags of the accepted N2 chain steps."""
+    return {f for s in _accepted_steps(tdata) for f in s.get("flags") or []}
 
 
 def multimodal_competitor(fit, p):
@@ -608,8 +687,9 @@ def usable_for_gp(tdata):
     modes = fit.get("modes") or []
     if modes and not modes[0].get("eligible", True):
         reasons.append("selected mode is not eligible")
-    if _m1_over_m0_unverified(tdata):
-        reasons.append("evidence_unverified for the M1-over-M0 pair")
+    unverified = _unverified_sources(tdata, fit)
+    if unverified:
+        reasons.append("evidence_unverified on " + ", ".join(unverified))
     jk = jackknife_sds(tdata)
     if not jk:
         reasons.append("no jackknife")
@@ -734,7 +814,7 @@ def table_row(tdata, image, pmoired):
         target=T,
         selected=model,
         is_ring=det.get("is_ring") if det else None,
-        flags=sorted(set(_fit_flags(fit)) | set((sel_arms.get("N2") or {}).get("flags") or [])),
+        flags=sorted(set(_fit_flags(fit)) | set((sel_arms.get("N2") or {}).get("flags") or []) | _chain_flags(tdata)),
         arm_dependent=None,
         usable_for_gp=bool(usable) if fit else None,
     )
@@ -763,7 +843,7 @@ def table_row(tdata, image, pmoired):
         if f1:
             a = ring_params(f1.get("best"), _derived(f1))
             flagged = flagged or sel_n1 != sel_n2
-            if p:
+            if p and None not in (a["inc"], a["pa"], p["inc"], p["pa"]):
                 flagged = flagged or abs(a["inc"] - p["inc"]) > 15 or abs(_angdiff180(a["pa"], p["pa"])) > 25
         row["arm_dependent"] = flagged
     row["lnZ_use"] = {
@@ -783,7 +863,8 @@ def table_row(tdata, image, pmoired):
     }
     gp = (tdata["selected"] or {}).get("gp_polar") or {}
     row["gp_delta"] = {arm: _num((gp.get(arm) or {}).get("delta")) for arm in ("N1", "N2")}
-    row["gp_notes"] = {arm: (gp.get(arm) or {}).get("mismatch") or (gp.get(arm) or {}).get("note") for arm in ("N1", "N2")}
+    row["gp_notes"] = {arm: _gp_note(gp.get(arm)) for arm in ("N1", "N2")}
+    row["gp_provisional"] = {arm: bool((gp.get(arm) or {}).get("provisional")) for arm in ("N1", "N2")}
     row["jackknife_sd"] = jk or None
     # literature comparison
     lit = {}
@@ -797,6 +878,17 @@ def table_row(tdata, image, pmoired):
         )
     row["literature"] = lit
     return row
+
+
+def _gp_note(g):
+    """Why a gp-polar comparison is n/a: the core's ``note`` (``mismatch`` is a boolean), else a bare mismatch string."""
+    g = g or {}
+    if g.get("note"):
+        return str(g["note"])
+    mm = g.get("mismatch")
+    if isinstance(mm, str):
+        return mm
+    return "mismatch" if mm is True else None
 
 
 def _nsig(ours, lit, sigma, axis=False):
@@ -906,7 +998,8 @@ def _gp_cell(r, arm):
     if d is None:
         return f"n/a ({note})" if note else "n/a"
     tag = " (not decisive)" if abs(d) < 20 else ""
-    return f"{d:+.1f}{tag}"
+    prov = " (provisional)" if (r.get("gp_provisional") or {}).get(arm) else ""
+    return f"{d:+.1f}{tag}{prov}"
 
 
 # --- CLI ---------------------------------------------------------------------------------

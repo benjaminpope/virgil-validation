@@ -14,8 +14,9 @@ except ImportError:  # pragma: no cover
     R = None
 needs_report = pytest.mark.skipif(R is None, reason="postagb_parametric_report needs scipy and matplotlib")
 
-# Guards our own script's conventions (orientation, selection plumbing), not virgil against an independent result.
-pytestmark = [needs_report, pytest.mark.validates("evidence", roots=["mathematics"], kind="guard")]
+# Guards our own script's conventions (orientation, selection plumbing) and, where virgil is installed, its agreement
+# with virgil's MultipoleDisk; none of it is an independent result, so the root is self-consistency.
+pytestmark = [needs_report, pytest.mark.validates("evidence", roots=["self-consistency"], kind="guard")]
 
 
 # --- fixtures ----------------------------------------------------------------------------
@@ -132,7 +133,7 @@ def test_ring_major_axis_at_input_pa_and_unit_sum(pa):
 def test_bright_pa_for_real_and_imaginary_w1(w, expect_offset, pa):
     p = dict(inc=50.0, pa=pa, r0=3.0, sigma=0.5, dra=0.0, ddec=0.0, w=np.array([w]), c=np.zeros(0), s=np.zeros(0))
     got = R.bright_pa(p)
-    assert abs(R._angdiff180(got, (pa + expect_offset) % 360)) < 0.2 or abs(((got - (pa + expect_offset)) + 180) % 360 - 180) < 0.2
+    assert abs(((got - (pa + expect_offset)) + 180) % 360 - 180) < 0.2  # modulo 360: a 180 deg error must fail
     # the same answer from the rendered image (peak pixel about the ring centre)
     img = R.render_ring(p, 257, 0.05)
     iy, ix = np.unravel_index(np.argmax(img), img.shape)
@@ -153,15 +154,68 @@ def test_render_matches_virgil_multipoledisk():
     try:
         from virgil.models import GaussianRing, Harmonics, MultipoleDisk
     except ImportError:
-        pytest.skip("virgil MultipoleDisk not installed")
-    inc, pa, r0, sig, w = 55.0, 40.0, 3.0, 0.6, 0.5 + 0.4j
-    disk = MultipoleDisk(GaussianRing(radius=r0, sigma=sig), harmonics=Harmonics(re=[w.real], im=[w.imag], form="positive"),
+        pytest.skip("virgil MultipoleDisk not installed: the theta origin and PA sense are NOT checked against virgil here")
+    inc, pa, r0, sig = 55.0, 40.0, 3.0, 0.6
+    w = np.array([1.6 + 0.9j, -0.8 + 1.5j])  # |w| > 1.5 at both orders: the tanh map and the step-up recursion matter
+    disk = MultipoleDisk(GaussianRing(radius=r0, sigma=sig),
+                         harmonics=Harmonics(re=list(w.real), im=list(w.imag), form="positive"),
                          inc=inc, pa=pa, dra=0.4, ddec=-0.3, n_r=64)
     fov, npix = 16.0, 128
     ref = np.asarray(disk.render(npix, fov))
-    p = dict(inc=inc, pa=pa, r0=r0, sigma=sig, dra=0.4, ddec=-0.3, w=np.array([w]), c=np.zeros(0), s=np.zeros(0))
+    p = dict(inc=inc, pa=pa, r0=r0, sigma=sig, dra=0.4, ddec=-0.3, w=w, c=np.zeros(0), s=np.zeros(0))
     mine = R.render_ring(p, npix, fov / npix)
-    assert R.ncc(ref, mine) > 0.97
+    np.testing.assert_allclose(mine, ref, rtol=1e-12, atol=1e-14)
+
+
+def test_axisymmetric_has_no_bright_pa():
+    p = dict(inc=40.0, pa=30.0, r0=3.0, sigma=0.5, dra=0.0, ddec=0.0, w=np.zeros(0, complex), c=np.zeros(0), s=np.zeros(0))
+    assert R.bright_pa(p) is None
+
+
+def _beam_pair(tmp_path, major, minor, pa, name="IW_Car", run=None):
+    """A stored npz (round source blob) with an elliptical beam applied, plus the sibling compare.json."""
+    d = tmp_path / "stored" / (run or "")
+    d.mkdir(parents=True, exist_ok=True)
+    f = d / f"{name}_gp-polar_nightw_unbounded_compare_images.npz"
+    stored_npz(f, blob=(0.0, 0.0))
+    z = dict(np.load(f))
+    beam = R.beam_from_mas(major, minor, pa, 0.3)
+    z["ours_conv"] = R.convolve(z["ours"], beam)
+    np.savez(f, **z)
+    return f, beam
+
+
+@pytest.mark.parametrize("pa", [45.0, 135.0])
+def test_fit_beam_recovers_elliptical_beam_on_axisymmetric_source(tmp_path, pa):
+    f, beam = _beam_pair(tmp_path, 1.8, 0.9, pa)
+    z = np.load(f)
+    got, rms = R.fit_beam(z["ours"], z["ours_conv"])
+    assert rms < 0.02
+    assert sorted(got[:2]) == pytest.approx(sorted(beam[:2]), rel=0.1)
+    assert abs(got[0] - got[1]) > 0.3 * beam[0]  # not trapped on a circular beam
+
+
+def test_render_stage_reads_beam_from_compare_json(tmp_path):
+    T = "IW_Car"
+    f, beam = _beam_pair(tmp_path, 1.8, 0.9, 45.0, name=T)
+    (f.parent / f"{T}_gp-polar_nightw_unbounded_compare.json").write_text(
+        json.dumps(dict(beam=dict(major_mas=1.8, minor_mas=0.9, pa_deg=45.0))))
+    out = tmp_path / "out"
+    write_target(out, T, ladder(T), selected_json("M2"))
+    z = np.load(R.render_stage(out, T, str(f.parent)), allow_pickle=True)
+    assert tuple(z["beam_pix"]) == pytest.approx(beam)
+    assert float(z["beam_fit_rel_rms"]) < 1e-6
+
+
+def test_stored_products_found_recursively_preferring_the_named_run(tmp_path):
+    T = "HD95767"
+    a, _ = _beam_pair(tmp_path, 1.8, 1.8, 0.0, name=T, run="04994a0+46ce208/" + T)
+    b, _ = _beam_pair(tmp_path, 1.8, 1.8, 0.0, name=T, run="15b154a+6fa8afe/" + T)
+    assert R.find_stored_compare(str(tmp_path / "stored"), T) == str(b)
+    assert R.find_stored_compare(str(tmp_path / "stored"), "PS_Gem") is None
+    a.unlink()
+    b.unlink()
+    assert R.find_stored_compare(str(tmp_path / "stored"), T) is None
 
 
 def test_render_stage_and_off_centre_quadrant_in_all_panels(tmp_path):
@@ -228,11 +282,14 @@ def test_table_builds_and_marks_missing_cells(tmp_path):
 def test_table_dbic_and_gp_cells(tmp_path):
     f = ladder("AI_Sco")
     sel = selected_json("M2")
-    sel["gp_polar"]["N1"] = dict(delta=None, mismatch="error_scale 1.338 != 1.280")
+    # the core's real schema: mismatch is a boolean, the text is in note, provisional marks PS Gem
+    sel["gp_polar"]["N1"] = dict(delta=None, mismatch=True, note="mismatch: stored error_scale 1.338 != 1.280", provisional=False)
+    sel["gp_polar"]["N2"] = dict(delta=-41.0, mismatch=False, note=None, provisional=True)
     write_target(tmp_path, "AI_Sco", f, sel)
     text = R.table_stage(tmp_path).read_text()
-    assert "error_scale 1.338 != 1.280" in text
-    assert "-41.0" not in text.split("dlnZ gp")[0]
+    assert "n/a (mismatch: stored error_scale 1.338 != 1.280)" in text
+    assert "n/a (True)" not in text
+    assert "-41.0 (provisional)" in text
 
 
 # --- section 9 branches ------------------------------------------------------------------
@@ -286,6 +343,63 @@ def test_evidence_unverified_and_multimodal_block_usable(tmp_path):
     assert g["usable_for_gp"]
 
 
+def test_m3o_is_a_model(tmp_path):
+    f = ladder("AI_Sco")
+    f[("M2o", "N2", None)] = model_json("M2o", "N2", w=(0.5,), lnz=-650, bic=900)
+    f[("M3o", "N2", None)] = model_json("M3o", "N2", w=(0.5, 0.2), lnz=-648, bic=895)
+    write_target(tmp_path, "AI_Sco", f, selected_json("M3o"))
+    R.table_stage(tmp_path)
+    ai = json.loads((tmp_path / "postagb_parametric_table.json").read_text())[0]
+    assert ai["selected"] == "M3o" and ai["lnZ_use"]["N2"]["M3o"] == -648
+
+
+def test_ineligible_selected_best_does_not_crash(tmp_path):
+    f = ladder("AI_Sco")
+    for arm in ARMS:
+        f[("M0", arm, None)]["best"] = None
+        f[("M2", arm, None)]["best"] = None
+    write_target(tmp_path, "AI_Sco", f, selected_json("M2"))
+    assert R.render_stage(tmp_path, "AI_Sco", None) is None
+    R.table_stage(tmp_path)
+    g = json.loads(R.geometry_stage(tmp_path).read_text())["AI_Sco"]
+    assert not g["usable_for_gp"] and g["source"] == "De Prins image"
+
+
+def test_axisymmetric_selection_has_nan_bright_pa_and_wrapped_pa_in_npz(tmp_path):
+    f = ladder("AI_Sco", pa=-8.4)
+    write_target(tmp_path, "AI_Sco", f, selected_json("M1"))
+    z = np.load(R.render_stage(tmp_path, "AI_Sco", None), allow_pickle=True)
+    assert np.isnan(float(z["bright_pa"])) and float(z["pa"]) == pytest.approx(171.6)
+    assert "dra" in z.files and "ddec" in z.files
+    assert R.compare_stage(tmp_path, "AI_Sco", None).exists()  # title omits the brightest PA
+    R.table_stage(tmp_path)
+    assert json.loads((tmp_path / "postagb_parametric_table.json").read_text())[0]["bright_pa"] is None
+
+
+def test_selected_model_chain_fallback_respects_accepted(tmp_path):
+    sel = dict(arms={"N2": dict(chain=[dict(pair="M2/M0", accepted=True, verdict="BIC only", flags=[]),
+                                       dict(pair="M3/M2", accepted=False, verdict="accept?", flags=[])])})
+    assert R.selected_model(dict(selected=sel, models={}), "N2") == "M2"
+
+
+def test_unverified_ring_over_blob_step_blocks_when_m1_is_ineligible(tmp_path):
+    f = ladder("IRAS15469-5311", inc=35.0, pa=51.0)
+    for arm in ARMS:
+        f[("M1", arm, None)]["best"] = None
+    sel = selected_json("M2")
+    chain = [dict(pair="M1/M0", dlnZ=None, verdict="child has no eligible fit", flags=[]),
+             dict(pair="M2/M0", dlnZ=40.0, verdict="accept", accepted=True, flags=["evidence_unverified"])]
+    sel["arms"]["N2"]["chain"] = chain
+    g = geo(tmp_path, "IRAS15469-5311", f, sel)
+    assert not g["usable_for_gp"] and any("evidence_unverified" in r and "M2/M0" in r for r in g["reasons"])
+    row = R.table_row(R.read_target(tmp_path, "IRAS15469-5311"), *R.literature())
+    assert "evidence_unverified" in row["flags"]
+    # and a flag on the selected fit alone blocks too
+    f2 = ladder("HR4049", inc=48.0, pa=95.0, flags=["evidence_unverified"])
+    g = geo(tmp_path, "HR4049", f2, selected_json("M2"))
+    assert not g["usable_for_gp"] and any("selected fit" in r for r in g["reasons"])
+
+
 def test_missing_target_gets_de_prins_with_reason(tmp_path):
     (tmp_path / "IW_Car").mkdir()
     path = R.geometry_stage(tmp_path)
@@ -332,6 +446,25 @@ def test_wrap_pa_negates_odd_orders_only_for_odd_shifts():
     assert R.wrap_pa(200.0, [0.5], [0.1]) == (pytest.approx(20.0), [-0.5], [-0.1])
     assert R.wrap_pa(-188.4, [0.5], [0.1])[1:] == ([0.5], [0.1])  # two half-turns: unchanged (-188.4 -> 171.6)
     assert R.wrap_pa(60.0, [0.5], [0.1]) == (60.0, [0.5], [0.1])
+
+
+def test_geometry_wrap_keeps_the_bright_side(tmp_path):
+    """pa = 220 with w1 != 0: the wrapped (pa, c, s) in the geometry JSON must describe the same bright side."""
+    w = (0.5 + 0.4j,)
+    fits = ladder("EN_TrA", inc=55.0, pa=220.0, w=w)
+    g = geo(tmp_path, "EN_TrA", fits, selected_json("M2"))
+    assert g["source"] == "ours" and g["pa"] == pytest.approx(40.0)
+    raw = dict(inc=55.0, pa=220.0, r0=2.4, sigma=0.7, dra=0.0, ddec=0.0, w=np.array(w), c=np.zeros(0), s=np.zeros(0))
+    wrapped = dict(raw, pa=g["pa"], w=np.zeros(0, complex), c=np.array(g["c"]), s=np.array(g["s"]))
+    want = R.bright_pa(raw)
+    got = R.bright_pa(wrapped)
+    assert abs(((got - want) + 180) % 360 - 180) < 0.2
+    unflipped = dict(wrapped, c=-np.array(g["c"]), s=-np.array(g["s"]))  # the bug: wrap without flipping odd orders
+    assert abs(((R.bright_pa(unflipped) - want) + 180) % 360 - 180) > 90
+    # the table agrees
+    row = R.table_row(R.read_target(tmp_path, "EN_TrA"), *R.literature())
+    assert row["pa"] == pytest.approx(40.0) and row["c1"] == pytest.approx(g["c"][0])
+    assert abs(((row["bright_pa"] - want) + 180) % 360 - 180) < 0.2
 
 
 def test_real_layout_geometry_has_c_s_dra_ddec_d_env(tmp_path):
