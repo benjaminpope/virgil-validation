@@ -364,8 +364,8 @@ class VirgilObjective(ao.Objective):
             v = np.random.default_rng(0).standard_normal(self.n)
             lam = 0.0
             for _ in range(iters):
-                v /= np.linalg.norm(v)
-                tv = self.hvp(v)
+                v = v / np.linalg.norm(v)  # not in place: hvp returns a read-only view of a JAX array
+                tv = np.array(self.hvp(v), float)
                 lam = float(v @ tv)
                 v = tv
             self._lip = 1.05 * lam  # a margin: power iteration approaches from below

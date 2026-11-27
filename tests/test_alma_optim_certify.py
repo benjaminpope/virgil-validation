@@ -463,3 +463,20 @@ def test_prepared_data_follow_the_probe_exactly(virgil_chain, tmp_path):
     assert ref == 1 and alpha == 2.0 and flux > 0
     assert np.allclose(np.sort(np.asarray(data.weight)), np.sort(cols["weight"] / 2.0))
     assert np.asarray(data.vis).size == cols["vis"].size
+
+
+def test_virgil_lipschitz_copes_with_read_only_hvp():
+    """``hvp`` of the JAX objective returns a read-only array; the power iteration must not normalise it in place (S2 tune crashed in FISTA on this)."""
+    import types
+
+    import virgil_bridge.alma_certify as ac
+
+    A = np.diag(np.linspace(1.0, 4.0, 6))
+
+    def hvp(v):
+        out = A @ v
+        out.flags.writeable = False
+        return out
+
+    stub = types.SimpleNamespace(_lip=None, n=6, hvp=hvp)
+    assert ac.VirgilObjective.lipschitz(stub) == pytest.approx(1.05 * 4.0, rel=1e-3)
