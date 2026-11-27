@@ -1,0 +1,47 @@
+{
+ "source": "residuals against the published model, 0e4377c+6fa8afe",
+ "targets": {
+  "AI_Sco": {
+   "night_gain_baseline": 0.025384930792071953,
+   "night_t3_offset_deg": 1.3320469181064625,
+   "n_cells_v2": 54,
+   "n_cells_t3": 36,
+   "nights": 10
+  },
+  "EN_TrA": {
+   "night_gain_baseline": 0.0,
+   "night_t3_offset_deg": 0.9131417947016113,
+   "n_cells_v2": 36,
+   "n_cells_t3": 24,
+   "nights": 7
+  },
+  "HD95767": {
+   "night_gain_baseline": 0.012231558162357208,
+   "night_t3_offset_deg": 1.0271193293806173,
+   "n_cells_v2": 42,
+   "n_cells_t3": 28,
+   "nights": 7
+  },
+  "IRAS15469-5311": {
+   "night_gain_baseline": 0.02349878699016102,
+   "night_t3_offset_deg": 1.266611126845683,
+   "n_cells_v2": 30,
+   "n_cells_t3": 20,
+   "nights": 5
+  },
+  "IW_Car": {
+   "night_gain_baseline": 0.012080654818088607,
+   "night_t3_offset_deg": 0.7536420634982504,
+   "n_cells_v2": 42,
+   "n_cells_t3": 28,
+   "nights": 8
+  },
+  "PS_Gem": {
+   "night_gain_baseline": 0.0035067619859981912,
+   "night_t3_offset_deg": 0.08654842628443205,
+   "n_cells_v2": 30,
+   "n_cells_t3": 20,
+   "nights": 5
+  }
+ }
+}
