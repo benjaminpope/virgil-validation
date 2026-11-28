@@ -52,7 +52,7 @@ jobs:
           .venv/bin/python scripts/trust.py --strict-provenance --evidence ci/push/evidence.jsonl $extra \
             --virgil virgil-src \
             --out docs/index.md --json docs/assets/trust.json \
-            --findings docs/method/findings.md --coverage docs/method/coverage.md --tests docs/tests/index.md
+            --findings docs/method/findings.md --coverage docs/method/coverage.md --roots docs/method/roots.md --tests docs/tests/index.md
           # Zensical, as virgil (it reads mkdocs.yml); strict fails on warnings
           .venv/bin/zensical build --clean --strict
       - uses: actions/upload-pages-artifact@v3

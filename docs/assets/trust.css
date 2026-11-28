@@ -89,3 +89,40 @@
 .vt-fold > .vt-findings { margin-top: .4rem; }
 .vt-failelse { display: inline-block; margin-left: .4em; padding: 0 .4em; font-size: .65rem; border: 1px solid #b0003a; border-radius: 3px; color: #b0003a; }
 .vt-failelse-banner { border-left: 3px solid #b0003a; padding: .4rem .8rem; margin: .6rem 0; font-size: .8rem; }
+
+/* Roots table (scripts/trust_roots_table.py): Trust page and Method > Roots */
+.vt-roots-wrap { overflow-x: auto; margin: .6rem 0; }
+.vt-roots { font-size: .72rem; border-collapse: collapse; min-width: 640px; width: 100%; }
+/* the theme dresses <details> as a callout; inside the table it is a plain disclosure */
+.md-typeset .vt-roots details.vt-fold { border: 0; box-shadow: none; background: none; padding: 0; margin: 0; }
+.md-typeset .vt-roots details.vt-fold > summary { display: list-item; list-style: disclosure-closed inside; padding: 0; margin: 0; font-size: .72rem; }
+.md-typeset .vt-roots details.vt-fold[open] > summary { list-style-type: disclosure-open; }
+.md-typeset .vt-roots details.vt-fold > summary::before, .md-typeset .vt-roots details.vt-fold > summary::after { display: none; }
+.vt-roots th, .vt-roots td { padding: .35rem .6rem; vertical-align: top; text-align: left; border-bottom: 1px solid var(--md-default-fg-color--lightest); }
+.vt-roots thead th { white-space: nowrap; }
+.vt-roots tbody th { font-weight: 700; min-width: 7rem; }
+.vt-roots td.n { text-align: right; font-variant-numeric: tabular-nums; }
+.vt-roots tr.vt-link th, .vt-roots tr.vt-link td { font-style: italic; color: var(--md-default-fg-color--light); }
+.vt-roots tr.vt-roots-detail td { padding-top: 0; }
+.vt-roots .vt-fold ul { list-style: none; margin: .3rem 0 .5rem; padding-left: 0; }
+.vt-roots .vt-fold li { margin: .5rem 0; }
+.vt-roots .vt-fold dl { margin: .15rem 0 0; display: grid; grid-template-columns: max-content 1fr; gap: .1rem .8rem; }
+.vt-roots .vt-fold dt { color: var(--md-default-fg-color--light); }
+.vt-roots .vt-fold dd { margin: 0; }
+.vt-draft { display: inline-block; margin-left: .2em; padding: 0 .35em; font-size: .6rem; font-weight: 400; font-style: normal;
+  letter-spacing: .03em; text-transform: uppercase; border: 1px dashed var(--md-default-fg-color--light);
+  border-radius: 3px; color: var(--md-default-fg-color--light); vertical-align: middle; }
+@media (max-width: 600px) {  /* a phone: each class is a card, not a table to scroll sideways */
+  .vt-roots { min-width: 0; }
+  .vt-roots, .vt-roots tbody, .vt-roots tr, .vt-roots th, .vt-roots td { display: block; }
+  .vt-roots thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .vt-roots tbody tr { padding: .5rem 0 0; }
+  .vt-roots th, .vt-roots td { border: 0; padding: .15rem .3rem; }
+  .vt-roots td[data-label]::before { content: attr(data-label); display: block; font-size: .65rem; color: var(--md-default-fg-color--light); }
+  .vt-roots td.n { display: inline-block; margin-right: 1.5rem; text-align: left; }
+  .vt-roots td.n::before { display: inline; margin-right: .4rem; }
+  .vt-roots tr.vt-roots-detail { padding: 0 0 .5rem; border-bottom: 1px solid var(--md-default-fg-color--lightest); }
+  .vt-roots tr.vt-link { border-bottom: 1px solid var(--md-default-fg-color--lightest); padding-bottom: .5rem; }
+  .vt-roots .vt-fold dl { grid-template-columns: 1fr; }
+  .vt-roots .vt-fold dd { margin-bottom: .3rem; }
+}

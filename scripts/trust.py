@@ -3,7 +3,8 @@
     python scripts/trust.py --evidence trust/evidence/latest.jsonl \\
         [--evidence trust/evidence/virgil.jsonl] [--virgil ~/code/drpangloss] \\
         [--out docs/index.md] [--json docs/assets/trust.json]
-        [--findings docs/method/findings.md] [--coverage docs/method/coverage.md] [--tests docs/tests/index.md]
+        [--findings docs/method/findings.md] [--coverage docs/method/coverage.md] \\
+        [--roots docs/method/roots.md] [--tests docs/tests/index.md]
 
 Two questions are kept apart:
 
@@ -532,6 +533,7 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
         strong, weak = set(), set()
         usable_roots, broken_roots = set(), set()
         usable_blocked_by, broken_blocked_by = set(), set()
+        blocked_checks = []  # display only: counted checks held back by an unverified via reference
         prop_roots = collections.defaultdict(set)
         prop_roots_usable = collections.defaultdict(set)
         prop_roots_all = collections.defaultdict(set)
@@ -547,6 +549,8 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
                     prop_roots_usable[prop] |= s_
                     prop_roots_all[prop] |= s_
             elif r["kind"] in agreeing:
+                if s_:  # a weak-only check counts for nothing, so it is not "waiting" on anything
+                    blocked_checks.append({"test": r["test"], "via": sorted(untrusted)})
                 is_broken = is_broken_ref is not None and any(is_broken_ref(v) for v in untrusted)
                 if not is_broken:
                     usable_roots |= s_
@@ -607,7 +611,7 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
             shown = prop_roots_all
         else:
             status = "unchecked"
-        return status, strong, weak, need, recs, good, via_out, shown
+        return status, strong, weak, need, recs, good, via_out, shown, blocked_checks
 
     def reference_verdicts():
         """Our reference nodes that are verified: the least fixed point of
@@ -677,7 +681,7 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
     for name in [n for n in nodes if n in ref_set] + [n for n in nodes if n not in ref_set]:
         node = nodes[name]
         reference_node = name in ref_set
-        status, strong, weak, need, recs, good, blocked_by, prop_roots = own_status_cache[name]
+        status, strong, weak, need, recs, good, blocked_by, prop_roots, blocked_checks = own_status_cache[name]
         agreeing = AGREEING_FOR_REFERENCES if reference_node else AGREEING
         commits = sorted({r["_commit"] for r in good if r["_commit"]})
         src_paths = tuple(sorted(set(node.get("source", []))))
@@ -689,6 +693,7 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
             "findings": open_findings.get(name, []) + external_open.get(name, []),
             "skipped": sum(1 for r in recs if r["outcome"] == "skipped" and r["kind"] in agreeing),
             "via_blocked": blocked_by,
+            "blocked_checks": blocked_checks,
             "properties": {p: {"need": n, "roots": sorted(prop_roots.get(p, ()))}
                            for p, n in (node.get("properties") or {}).items()},
             "unconfirmed": unconfirmed_conventions(name, prop_roots),
@@ -922,6 +927,10 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
             "checks": o["checks"], "commits": o["commits"],
             "changed": changed_below(name),
             "skipped": o["skipped"],
+            # display only: counted checks held back by a reference that is not verified, and which
+            # references (the same set for every status, unlike ``via_blocked`` above of an ok-via part)
+            "blocked_checks": o["blocked_checks"],
+            "blocked_by_references": sorted({v for c in o["blocked_checks"] for v in c["via"]}),
             "source": node.get("source", []),
         }
 
@@ -1021,7 +1030,7 @@ from trust_render import (  # noqa: E402,F401
     ICON, ORDER, COLOURS, _bar, _legend, _value, _pipeline_card, _chain, _tooltip, layers, _fails_badge, _map,
     _matrix, _link_label, _ledger, FINDING_GROUPS, render_findings, render_coverage, LAYER_SECTION, test_sections,
     render_tests, _precision, _tables, SHOWCASE, _headline_html, _headline_by_order_html, _fails_elsewhere_html,
-    render, _skyline,
+    render, render_roots, _skyline,
 )
 e = trust_render.e  # not in the import above: build() uses `e` as a loop variable, which ruff flags against an import
 
@@ -1044,6 +1053,7 @@ def main():
     ap.add_argument("--json", default=None)
     ap.add_argument("--findings", default=None, help="also write the Findings page here (docs/method/findings.md)")
     ap.add_argument("--coverage", default=None, help="also write the Not yet covered page here (docs/method/coverage.md)")
+    ap.add_argument("--roots", default=None, help="also write the Roots page here (docs/method/roots.md)")
     ap.add_argument("--tests", default=None, help="also write the Function tests landing page here (docs/tests/index.md)")
     args = ap.parse_args()
     graph = yaml.safe_load(open(args.graph))
@@ -1062,6 +1072,8 @@ def main():
         pathlib.Path(args.findings).write_text(render_findings(ledger))
     if args.coverage:
         pathlib.Path(args.coverage).write_text(render_coverage(model))
+    if args.roots:
+        pathlib.Path(args.roots).write_text(render_roots())
     if args.tests:
         pathlib.Path(args.tests).parent.mkdir(parents=True, exist_ok=True)
         pathlib.Path(args.tests).write_text(render_tests(model))
