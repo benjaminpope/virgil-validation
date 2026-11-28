@@ -23,7 +23,8 @@ and virgil.detection.injection_recovery.
   the same searches with uncertainty=False (the statistics-only path of
   BinaryPipeline's null searches: delta_chi2, log_bayes_factor, best_flux,
   best position and converged_fraction agree, max_snr and flux_peak_steps are
-  NaN; two silent-corruption findings on that container are pinned as F32),
+  NaN; the two silent-corruption findings on that container, F32, are fixed in virgil#770 and
+  pinned as checks: max_snr queries and mixed-uncertainty concatenation raise ValueError),
   noisy 7-hole NRM batch/chunk invariance and draw distinctness, and
   position-matched rejection of off-grid interferometric aliases.
 """
@@ -1016,66 +1017,39 @@ def _tiny_statistics_only_runs(tmp_path):
     "virgil.detection.DetectionMC",
     "virgil.detection.injection_recovery",
     roots=["mathematics"],
-    kind="finding",
-    headline="max_snr_fap_on_nan_draws",
     tier="B",
 )
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason=(
-        "F32: on an uncertainty=False run every max_snr is NaN, yet false_alarm_probability, threshold and completeness "
-        "return a finite 1/(n+1), (nan, nan) and 0.0 instead of raising ValueError, so a significance "
-        "statistic that was never computed reads as 'no detection'."
-    ),
-)
 def test_f32_statistics_only_max_snr_queries_raise(tmp_path):
-    """F32 (a): max_snr is documented NaN on an ``uncertainty=False`` run; querying it
-    must raise rather than return a value built from NaNs (expected: ValueError;
-    virgil returns FAP = 1/(n_null+1))."""
+    """F32 (a), fixed in virgil#770 (fa61d957): max_snr is documented NaN on an
+    ``uncertainty=False`` run; querying it raises ValueError (naming the statistic and the
+    remedy) rather than returning a value built from NaNs."""
     mc_false, _ = _tiny_statistics_only_runs(tmp_path)
     assert np.all(np.isnan(np.asarray(mc_false.null["max_snr"])))
-    fap = mc_false.false_alarm_probability("max_snr", 3.0)[0]
-    record("max_snr_fap_on_nan_draws", float(fap))
     for query in (
         lambda: mc_false.false_alarm_probability("max_snr", 3.0),
         lambda: mc_false.threshold("max_snr", 0.25),
         lambda: mc_false.completeness("max_snr", 0.25),
+        lambda: mc_false.detected("max_snr", 0.25),
+        lambda: mc_false.roc("max_snr"),
+        lambda: mc_false.auc("max_snr"),
+        lambda: mc_false.contrast_curve("max_snr", 0.25),
     ):
-        try:
+        with pytest.raises(ValueError, match="max_snr"):
             query()
-        except ValueError:
-            continue
-        raise AssertionError("a max_snr query on an uncertainty=False run returned instead of raising ValueError")
 
 
 @pytest.mark.validates(
     "virgil.detection.DetectionMC",
     roots=["mathematics"],
-    kind="finding",
-    headline="merged_max_snr_nan_draws",
-)
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason=(
-        "F32: DetectionMC.concatenate merges uncertainty=False with uncertainty=True runs (meta['uncertainty'] "
-        "becomes True of the first) so NaN max_snr draws are scored as -inf and deflate max_snr false-alarm "
-        "probabilities; it should raise ValueError like the other metadata mismatches."
-    ),
 )
 def test_f32_concatenate_refuses_mixed_uncertainty(tmp_path):
-    """F32 (b): runs that differ in ``uncertainty`` do not share a null distribution for
-    max_snr; concatenate must raise ValueError as it does for other mismatched metadata."""
+    """F32 (b), fixed in virgil#770 (fa61d957): runs that differ in ``uncertainty`` do not
+    share a null distribution for max_snr; concatenate raises ValueError, as it does for other
+    mismatched metadata."""
     mc_false, mc_true = _tiny_statistics_only_runs(tmp_path)
-    try:
-        merged = det.DetectionMC.concatenate([mc_true, mc_false])
-    except ValueError:
-        return
-    record("merged_max_snr_nan_draws", float(np.isnan(np.asarray(merged.null["max_snr"])).sum()))
-    raise AssertionError(
-        f"concatenate merged uncertainty=True and uncertainty=False runs into meta uncertainty={merged.meta.get('uncertainty')}"
-    )
+    for runs in ([mc_true, mc_false], [mc_false, mc_true]):
+        with pytest.raises(ValueError, match="uncertainty"):
+            det.DetectionMC.concatenate(runs)
 
 
 @pytest.mark.validates(

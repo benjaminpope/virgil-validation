@@ -1841,19 +1841,9 @@ def test_kkt_report_softmax_image_multiplier_and_nuisance_start_gate(tmp_path):
     start_vals = {"env.log_brightness": init_eta, "env.flux": 0.28}
     done = vfit.fit(start, priors, data, reg, init=start_vals, max_steps=2000, gtol=1e-13)
     f_env = float(done.values["env.flux"])
-    near_vals = {
-        "env.log_brightness": np.asarray(done.values["env.log_brightness"]),
-        "env.flux": f_env * 1.002,
-    }
 
     rep_opt_only = vfit.kkt_report(done, priors, data, reg)
     rep_ok = vfit.kkt_report(done, priors, data, reg, start=start_vals)
-    rep_near = vfit.kkt_report(done, priors, data, reg, start=near_vals)
-    assert rep_ok["converged"] is True
-    assert rep_near["converged"] is True
-    assert float(rep_ok["nuisances"]["env.flux"]["grad_norm"]) < 1e-3
-    assert float(rep_ok["nuisances"]["env.flux"]["grad_rel"]) < float(vfit.NUISANCE_TOL)
-    assert float(rep_near["nuisances"]["env.flux"]["grad_rel"]) < float(vfit.NUISANCE_TOL)
 
     def _simplex_grads(eta_arr, flux_val):
         m_cur = vm.System(star=vm.PointSource(), env=vm.Image(eta_arr, scale, flux=flux_val, support=support))
@@ -1885,16 +1875,6 @@ def test_kkt_report_softmax_image_multiplier_and_nuisance_start_gate(tmp_path):
         gp_arr = np.where(b_arr > 0.0, ge_arr / np.where(b_arr > 0.0, b_arr, 1.0), 0.0)
         return b_arr, gd_arr, gp_arr
 
-    def _flux_neg_loglike_grad(eta_arr, flux_val):
-        return float(
-            jax.grad(
-                lambda fv: -vl.model_loglike(
-                    vm.System(star=vm.PointSource(flux=1.0), env=vm.Image(eta_arr, scale, flux=fv, support=support)),
-                    data,
-                )
-            )(jnp.float64(flux_val))
-        )
-
     b_opt, gd_opt, gp_opt = _simplex_grads(done.values["env.log_brightness"], f_env)
     b_init, gd_init_b, gp_init_b = _simplex_grads(init_eta, 0.28)
 
@@ -1920,18 +1900,97 @@ def test_kkt_report_softmax_image_multiplier_and_nuisance_start_gate(tmp_path):
     assert kkt_rel_start_err < 1e-11
     assert float(rep_ok["images"]["env"]["kkt_rel"]) < float(rep_opt_only["images"]["env"]["kkt_rel"])
 
-    # Exact nuisance grad_norm and grad_rel check at interior Uniform optimum (both distant & nearby starts)
-    g_flux_start = _flux_neg_loglike_grad(init_eta, 0.28)
-    g_flux_near = _flux_neg_loglike_grad(near_vals["env.log_brightness"], near_vals["env.flux"])
-    g_flux_opt = _flux_neg_loglike_grad(done.values["env.log_brightness"], f_env)
-    want_nuis_ok = ref.kkt_nuisance_grad_rel_ref(g_flux_opt, g_flux_start)
-    want_nuis_near = ref.kkt_nuisance_grad_rel_ref(g_flux_opt, g_flux_near)
-    nuis_ok_err = max(
-        abs(float(rep_ok["nuisances"]["env.flux"]["grad_norm"]) - want_nuis_ok["grad_norm"]),
-        abs(float(rep_ok["nuisances"]["env.flux"]["grad_rel"]) - want_nuis_ok["grad_rel"]),
-        abs(float(rep_near["nuisances"]["env.flux"]["grad_rel"]) - want_nuis_near["grad_rel"]),
+    record("nonstat_fixed_flux_kkt_err", nonstat_fixed_err)
+    record("softmax_start_kkt_rel_err", kkt_rel_start_err)
+
+
+@pytest.mark.slow
+@pytest.mark.validates(
+    "virgil.fitting.kkt_report",
+    roots=["mathematics"],
+    kind="finding",
+    headline="nuisance_grad_rel",
+    tier="B",
+)
+@pytest.mark.xfail(
+    strict=True,
+    raises=AssertionError,
+    reason=(
+        "F34: kkt_report on an lm fit measures a Uniform nuisance in the unconstrained fitted coordinate "
+        "(env.flux z = -1.337) but projects it with the Uniform value-space bounds (0.01, 1.0), so a stationary "
+        "optimum reports grad_norm = |z| + 0.01 = 1.347 and converged is False from a start 0.2% off in flux "
+        "(grad_rel 0.166 against NUISANCE_TOL 1e-3); the same checks passed at the 0.4.2 RC pin, where the objective was always boxed"
+    ),
+)
+def test_f34_kkt_report_uniform_nuisance_stationary_under_lm_fit(tmp_path):
+    """F34: a Uniform(1e-2, 1) flux nuisance of a stationary lm fit, with the softmax image (the start-gate half of
+    the softmax image test): converged and grad_rel < NUISANCE_TOL from the exact and a nearby start, and the
+    nuisance gradients equal our independent gradients in the fitted coordinate z = logit((F - lo) / (hi - lo)),
+    so the xfail flips when virgil stops projecting z onto the Uniform's value-space bounds."""
+    n, scale = 10, 0.65
+    east, north = ref.sky_grid_mas(n, scale)
+    support = np.hypot(east, north) >= 1.0
+    blob = ref.gaussian_blob_ref(n, scale, sigma_mas=1.3, dra=1.5, ddec=-1.0) * support
+    blob /= blob.sum()
+    init_blob = ref.gaussian_blob_ref(n, scale, sigma_mas=1.8) * support
+    init_blob /= init_blob.sum()
+    init_eta = np.where(support, np.log(np.clip(init_blob, 1e-12, None)), 0.0)
+
+    truth = vm.System(
+        star=vm.PointSource(),
+        env=vm.Image.from_brightness(blob, scale, flux=0.22, support=support),
     )
-    assert nuis_ok_err < 1e-11
+    data = _three_ut_oidata(tmp_path / "softmax.fits", truth, seed=14)
+
+    reg = [vi.TSV(80.0, beam_mas=scale, path="env")]
+
+    # 2. Converged free-flux Image fit (Uniform prior: flat & value space share zero prior slope) + nuisance start= gate
+    start = vm.System(star=vm.PointSource(), env=vm.Image(init_eta, scale, flux=0.28, support=support))
+    priors = vi.image_priors(start) | {"env.flux": dist.Uniform(1e-2, 1.0)}
+    start_vals = {"env.log_brightness": init_eta, "env.flux": 0.28}
+    done = vfit.fit(start, priors, data, reg, init=start_vals, max_steps=2000, gtol=1e-13)
+    f_env = float(done.values["env.flux"])
+    near_vals = {
+        "env.log_brightness": np.asarray(done.values["env.log_brightness"]),
+        "env.flux": f_env * 1.002,
+    }
+
+    rep_opt_only = vfit.kkt_report(done, priors, data, reg)
+    rep_ok = vfit.kkt_report(done, priors, data, reg, start=start_vals)
+    rep_near = vfit.kkt_report(done, priors, data, reg, start=near_vals)
+    assert rep_ok["converged"] is True
+    assert rep_near["converged"] is True
+    assert float(rep_ok["nuisances"]["env.flux"]["grad_norm"]) < 1e-3
+    assert float(rep_ok["nuisances"]["env.flux"]["grad_rel"]) < float(vfit.NUISANCE_TOL)
+    assert float(rep_near["nuisances"]["env.flux"]["grad_rel"]) < float(vfit.NUISANCE_TOL)
+
+    def _flux_neg_loglike_grad(eta_arr, flux_val):
+        return float(
+            jax.grad(
+                lambda fv: -vl.model_loglike(
+                    vm.System(star=vm.PointSource(flux=1.0), env=vm.Image(eta_arr, scale, flux=fv, support=support)),
+                    data,
+                )
+            )(jnp.float64(flux_val))
+        )
+
+    # The fitted coordinate of a Uniform(lo, hi) flux is z = logit(u), u = (F - lo) / (hi - lo), so
+    # dL/dz = dL/dF (hi - lo) u (1 - u); virgil measures the nuisance in z (no bounds on an lm fit).
+    lo_u, hi_u = 1e-2, 1.0
+
+    def _g_z(g_flux, flux_val):
+        u = (flux_val - lo_u) / (hi_u - lo_u)
+        return g_flux * (hi_u - lo_u) * u * (1.0 - u)
+
+    # At the stationary optimum the gradient is numerical noise (about 1e-4), so the independent gradient there
+    # only confirms the optimum is stationary from both starts; the exact pin is off the optimum, below.
+    g_flux_start = _g_z(_flux_neg_loglike_grad(init_eta, 0.28), 0.28)
+    g_flux_near = _g_z(
+        _flux_neg_loglike_grad(near_vals["env.log_brightness"], near_vals["env.flux"]), near_vals["env.flux"]
+    )
+    g_flux_opt = _g_z(_flux_neg_loglike_grad(done.values["env.log_brightness"], f_env), f_env)
+    assert ref.kkt_nuisance_grad_rel_ref(g_flux_opt, g_flux_start)["grad_rel"] < float(vfit.NUISANCE_TOL)
+    assert ref.kkt_nuisance_grad_rel_ref(g_flux_opt, g_flux_near)["grad_rel"] < float(vfit.NUISANCE_TOL)
 
     bad_flux = 0.85
     fixed_flux_start = vm.System(
@@ -1949,31 +2008,25 @@ def test_kkt_report_softmax_image_multiplier_and_nuisance_start_gate(tmp_path):
     rep_no_start = vfit.kkt_report(perturbed, priors, data, reg)
     rep_with_start = vfit.kkt_report(perturbed, priors, data, reg, start=near_vals)
     nuis_grad_rel = float(rep_with_start["nuisances"]["env.flux"]["grad_rel"])
-    g_flux_pert = _flux_neg_loglike_grad(img_only.values["env.log_brightness"], bad_flux)
-    want_nuis_pert = ref.kkt_nuisance_grad_rel_ref(
-        g_flux_pert, g_flux_near, value_cur=bad_flux, lower=1e-2, upper=1.0
-    )
+    # the result holds the flux in float32 (0.85 -> 0.8500000238), where the gradient is steep, so evaluate there
+    f_held = float(perturbed.values["env.flux"])
+    g_flux_pert = _g_z(_flux_neg_loglike_grad(img_only.values["env.log_brightness"], f_held), f_held)
+    want_nuis_pert = ref.kkt_nuisance_grad_rel_ref(g_flux_pert, g_flux_near)
     nuis_pert_err = max(
-        abs(float(rep_with_start["nuisances"]["env.flux"]["grad_norm"]) - want_nuis_pert["grad_norm"]),
-        abs(nuis_grad_rel - want_nuis_pert["grad_rel"]),
+        abs(float(rep_with_start["nuisances"]["env.flux"]["grad_norm"]) - want_nuis_pert["grad_norm"])
+        / want_nuis_pert["grad_norm"],
+        abs(nuis_grad_rel - want_nuis_pert["grad_rel"]) / want_nuis_pert["grad_rel"],
     )
 
-    # Also pin virgil 0.4.2's boxed=True +1/F value-space evaluation on LogUniform (F30 xfail below)
-    priors_lu = vi.image_priors(start) | {"env.flux": dist.LogUniform(1e-2, 1.0)}
-    done_lu = vfit.fit(start, priors_lu, data, reg, init=start_vals, max_steps=2000, gtol=1e-13)
-    f_lu = float(done_lu.values["env.flux"])
-    g_ll_lu = _flux_neg_loglike_grad(done_lu.values["env.log_brightness"], f_lu)
-    rep_lu_far = vfit.kkt_report(done_lu, priors_lu, data, reg, start=start_vals)
-    assert abs(g_ll_lu) < 1e-3  # stationary in flat ln F
-    assert abs(float(rep_lu_far["nuisances"]["env.flux"]["grad_norm"]) - abs(g_ll_lu + 1.0 / f_lu)) < 1e-11
-
-    record("nonstat_fixed_flux_kkt_err", nonstat_fixed_err)
-    record("softmax_start_kkt_rel_err", kkt_rel_start_err)
-    record("nuisance_grad_rel_err", max(nuis_ok_err, nuis_pert_err))
+    record("nuisance_grad_rel_err", nuis_pert_err)
     record("nuisance_grad_rel", nuis_grad_rel)
     assert rep_no_start["converged"] is True
     assert rep_with_start["converged"] is False
-    assert nuis_pert_err < 1e-11
+    # OPEN (vv#290 review): with the value-space projection patched out, virgil's grad_norm agrees with this
+    # chain-rule gradient to 2e-5 and grad_rel to 1.5e-4 (its Uniform start gradient is 1.3e-4 below ours,
+    # at the same flux), not to 1e-9 as the LogUniform pin in the F30 test does. The source is not isolated,
+    # so this strict pin would still fail after a virgil fix of F34; Ben to rule how tight it should be.
+    assert nuis_pert_err < 1e-9
     assert nuis_grad_rel > float(vfit.NUISANCE_TOL)
 
 
@@ -1981,18 +2034,8 @@ def test_kkt_report_softmax_image_multiplier_and_nuisance_start_gate(tmp_path):
 @pytest.mark.validates(
     "virgil.fitting.kkt_report",
     roots=["mathematics"],
-    kind="finding",
     headline="loguniform_nuis_grad_rel",
     tier="B",
-)
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason=(
-        "F30: kkt_report constructs _Objective(..., boxed=True) on flat-coordinate LogUniform "
-        "parameters, adding +1/F to d(-loglike)/dF so a stationary gtol=1e-13 fit() optimum "
-        "has grad_norm ~ 1/F and fails NUISANCE_TOL from a nearby start"
-    ),
 )
 def test_f30_kkt_report_loguniform_nuisance_stationary_from_nearby_start(tmp_path):
     n, scale = 10, 0.65
@@ -2036,8 +2079,15 @@ def test_f30_kkt_report_loguniform_nuisance_stationary_from_nearby_start(tmp_pat
             )
         )(jnp.float64(near_lu["env.flux"]))
     )
+    lo, hi = 1e-2, 1.0
+
+    def _g_z(g_flux, flux_val):
+        # fitted coordinate z = logit(u), u = ln(F/lo)/ln(hi/lo): dL/dz = F dL/dF ln(hi/lo) u (1-u)
+        u = np.log(flux_val / lo) / np.log(hi / lo)
+        return flux_val * g_flux * np.log(hi / lo) * u * (1.0 - u)
+
     want_flat = ref.kkt_nuisance_grad_rel_ref(
-        f_lu * g_ll_opt, near_lu["env.flux"] * g_ll_near
+        _g_z(g_ll_opt, f_lu), _g_z(g_ll_near, near_lu["env.flux"])
     )
     assert want_flat["grad_rel"] < float(vfit.NUISANCE_TOL)
 
@@ -2050,6 +2100,46 @@ def test_f30_kkt_report_loguniform_nuisance_stationary_from_nearby_start(tmp_pat
     assert grad_norm_lu < 1e-2
     assert grad_rel_lu < float(vfit.NUISANCE_TOL)
     assert rep_lu["converged"] is True
+
+    # F30 is fixed (virgil#750): the nuisance is measured in its fitted coordinate. At the stationary optimum
+    # its gradient is numerical noise (about 1e-4), so pin the value off the optimum and exercise the start=
+    # gate on a live path: re-optimize the image pixels at a flux 50% away (a stationary image, a
+    # non-stationary flux), where kkt_report without start= is converged (images only) and with start=near_lu is
+    # not, its grad_norm and grad_rel equal to the chain-rule gradient of our independent dL/dF. A +1/F term
+    # (4.6 here) or a zero would fail the pin.
+    f_pert = f_lu * 1.5
+    pert_start = vm.System(
+        star=vm.PointSource(),
+        env=vm.Image(done_lu.values["env.log_brightness"], scale, flux=f_pert, support=support),
+    )
+    img_only = vfit.fit(pert_start, vi.image_priors(pert_start), data, reg, max_steps=2000, gtol=1e-13)
+    pert = dataclasses.replace(
+        done_lu,
+        model=img_only.model,
+        values={"env.log_brightness": img_only.values["env.log_brightness"], "env.flux": jnp.asarray(f_pert)},
+    )
+    g_pert = float(
+        jax.grad(
+            lambda fv: -vl.model_loglike(
+                vm.System(star=vm.PointSource(flux=1.0), env=vm.Image(img_only.values["env.log_brightness"], scale, flux=fv, support=support)),
+                data,
+            )
+        )(jnp.float64(f_pert))
+    )
+    want_pert = ref.kkt_nuisance_grad_rel_ref(
+        _g_z(g_pert, f_pert), _g_z(g_ll_near, near_lu["env.flux"])
+    )
+    rep_pert_no_start = vfit.kkt_report(pert, priors_lu, data, reg)
+    rep_pert = vfit.kkt_report(pert, priors_lu, data, reg, start=near_lu)
+    got_norm = float(rep_pert["nuisances"]["env.flux"]["grad_norm"])
+    got_rel = float(rep_pert["nuisances"]["env.flux"]["grad_rel"])
+    err = max(abs(got_norm - want_pert["grad_norm"]) / want_pert["grad_norm"], abs(got_rel - want_pert["grad_rel"]) / want_pert["grad_rel"])
+    record("loguniform_nuis_off_optimum_rel_err", err)
+    assert want_pert["grad_norm"] > 1.0
+    assert want_pert["grad_rel"] > float(vfit.NUISANCE_TOL)
+    assert rep_pert_no_start["converged"] is True
+    assert rep_pert["converged"] is False
+    assert err < 1e-9
 
 
 @pytest.mark.slow
