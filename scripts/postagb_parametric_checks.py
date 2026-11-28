@@ -164,9 +164,9 @@ def simulate(model, data_raw, cfg, s, seed):
     """``data_raw`` with its V^2 and closure phases replaced by those of ``model`` under the N2 noise of ``Q.noise_arm``: independent Gaussian noise of
     sd ``s`` x the quoted error, one log|V| gain per (night, baseline) of width 0.03 and one closure offset per (night, triangle) of 2 deg, drawn by
     virgil's ``OIData.with_model``. The returned data carry the quoted errors, so ``Q.noise_arm(., cfg, 'N2', s)`` reproduces the arm they were drawn from."""
-    arm = Q.noise_arm(data_raw, cfg, "N2", s=s)
-    inj = arm.with_model(model, key=jax.random.PRNGKey(int(seed)))
-    return data_raw.set(["vis", "phi"], [inj.vis, inj.phi])
+    from postagb_noise import simulate as sim_hook  # noqa: PLC0415  (WP-02: the one simulation hook)
+
+    return sim_hook(cfg, model, noise="nightw", scale=s, seed=seed, data0=data_raw).data
 
 
 def _circ180(a, b):
