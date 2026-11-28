@@ -2195,8 +2195,10 @@ def image_one(args, out, strat):
     binary = getattr(args, "binary", "paper")
     if binary not in ("paper", "none") and strat != "gp-polar":
         raise SystemExit("--binary is for gp-polar only (design §12)")
-    if (f_target is not None or getattr(args, "fstar_night", False)) and strat != "gp-polar":
-        raise SystemExit("--fstar and --fstar-night are for gp-polar only")
+    if getattr(args, "fstar_night", False) and strat != "gp-polar":
+        raise SystemExit("--fstar-night is for gp-polar only")
+    if f_target is not None and strat not in ("gp-polar", "mem"):  # the MaxEnt fit takes the same fixed-f* scene as the GP
+        raise SystemExit("--fstar is for gp-polar and mem only")
     if sim is not None and args.noise != "night":  # arm (a): the MacKay factor found on this draw, as the scale stage does on the real data: on the
         # base SPARCO scene, before the --binary / --fstar* transforms, so the variants fitted to one draw share one error scale (their evidences compare)
         base_pri = image_priors(scene) | scene_priors(cfg, scene) | chrom_pri | (companion_priors(args) if companion else {})
@@ -2916,7 +2918,7 @@ def plot_compare(out, cfg):
     ax[0].set_title("virgil, native pixels")
     fig.suptitle(
         f"{cfg['name']}: NCC {r['ncc_zero_shift']:.2f} (best shift {r['ncc_best_shift']:.2f}); "
-        f"χ²/pt virgil {r['chi2_per_point_ours']:.2f}, ORGANIC on our data {r['chi2_per_point_published_on_our_data']:.2f}"
+        f"χ²/pt virgil {num(r['chi2_per_point_ours'])}, ORGANIC on our data {num(r['chi2_per_point_published_on_our_data'])}"
         + ("  [SMOKE]" if r["smoke"] else ""), fontsize=11)
     fig.tight_layout()
     fig.savefig(path(out, cfg, "compare.png"), dpi=130)
@@ -3114,6 +3116,12 @@ def replot_stage(args, out):
 # table: the page's parameter table (paper PMOIRED fit | virgil parametric fit | difference in sigma)
 
 
+def num(v, spec=".2f", none="n/a"):
+    """``v`` formatted by ``spec``, or ``none`` when it is None (a key a run does not write: ``compare`` under ``--inject`` has no
+    chi2 on the real data, a run without a secondary has no secondary flux)."""
+    return none if v is None else format(v, spec)
+
+
 def _fmt(v, e=None):
     return f"{v:.3g}" if e is None else f"{v:.3g} ± {e:.2g}"
 
@@ -3217,7 +3225,7 @@ def table_stage(args, out):
                              ("Primary UD diameter (mas)", "ud", img["ud"]),
                              ("Secondary flux fraction, H (%)", "f_sec", img["f_sec_pct"]),
                              ("Image spectral index", "image_index", img["env_index"])):
-        if key in ip and not (key == "f_sec" and cfg["sec0"] is None):
+        if key in ip and mine is not None and not (key == "f_sec" and cfg["sec0"] is None):
             lines.append(f"| {label} | {_fmt(ip[key])} | {_fmt(mine)} | {mine - ip[key]:+.3g} |")
     text = "\n".join(lines)
     print(text)
