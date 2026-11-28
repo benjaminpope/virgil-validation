@@ -496,8 +496,11 @@ def run_fit(scene, priors, data, time_limit=60.0, max_steps=2000):
     try:
         res = fit(scene, priors, data, max_steps=max_steps, time_limit=time_limit)
         if not res.info.get("converged") and not res.info.get("at_bound"):
-            res2 = fit(res.model, priors, data, method="lbfgsb", max_steps=max_steps, time_limit=time_limit)
-            if res2.info.get("converged") or float(res2.info["loss"]) < float(res.info["loss"]):
+            try:
+                res2 = fit(res.model, priors, data, method="lbfgsb", max_steps=max_steps, time_limit=time_limit)
+            except TypeError:  # lbfgsb needs finite boxes: LogUniform, Normal and isotropic priors raise; keep the first fit
+                res2 = None
+            if res2 is not None and (res2.info.get("converged") or float(res2.info["loss"]) < float(res.info["loss"])):
                 res = res2
     except Exception as e:  # noqa: BLE001  (a start that cannot be fitted is recorded, not fatal)
         return None, dict(converged=False, stop=f"exception: {type(e).__name__}: {str(e)[:120]}", at_bound=[], seconds=time.time() - t0)

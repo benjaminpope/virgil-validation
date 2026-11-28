@@ -92,7 +92,7 @@ def nuts_mode(model, priors, data, values, warmup=500, samples=1000, chains=2, s
 
 def summarise(run, laplace_sd=None):
     """The record of one NUTS run: per parameter mean, sd, split r-hat, ESS and (where ``laplace_sd`` is given) sd / Laplace sd; the worst values;
-    and the flags ``not_converged`` (any r-hat >= 1.01 or ESS <= 400, a single chain, or the time box) and ``laplace_sd_mismatch``."""
+    and the flags ``not_converged`` (any r-hat >= 1.01 or ESS <= 400, a single chain, the time box, or any divergence; ``divergences`` also names the last) and ``laplace_sd_mismatch``."""
     d = run["draws"]
     rhat, ess = diagnostics(d)
     flat = d.reshape(-1, d.shape[-1])
@@ -103,9 +103,13 @@ def summarise(run, laplace_sd=None):
         if laplace_sd is not None and np.isfinite(laplace_sd[i]) and laplace_sd[i] > 0:
             rows[n] |= dict(laplace_sd=float(laplace_sd[i]), sd_ratio=float(sd[i] / laplace_sd[i]))
     flags = []
-    if d.shape[0] < 2 or run.get("time_box_hit"):
+    short = d.shape[0] < 2 or bool(run.get("time_box_hit"))
+    if short:
         flags.append("single_chain")
-    if not (np.all(np.isfinite(rhat)) and rhat.max() < RHAT_MAX and ess.min() > ESS_MIN):
+    ndiv = int(np.sum(run["diverging"]))
+    if ndiv:
+        flags.append("divergences")
+    if short or ndiv or not (np.all(np.isfinite(rhat)) and rhat.max() < RHAT_MAX and ess.min() > ESS_MIN):
         flags.append("not_converged")
     ratios = [r["sd_ratio"] for r in rows.values() if "sd_ratio" in r]
     if ratios and (min(ratios) < SD_RATIO[0] or max(ratios) > SD_RATIO[1]):

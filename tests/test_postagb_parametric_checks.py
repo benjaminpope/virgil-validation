@@ -17,7 +17,7 @@ except ImportError:
     P = Q = C = None
 
 pytestmark = [pytest.mark.skipif(P is None, reason="virgil without MultipoleDisk (install the postagb extra)"),
-              pytest.mark.validates("evidence", roots=["mathematics"], kind="guard")]
+              pytest.mark.validates("evidence", roots=["self-consistency"], kind="guard")]
 
 
 @pytest.fixture(autouse=True)
@@ -64,4 +64,6 @@ def test_summarise_flags_a_stuck_chain_and_passes_a_good_one():
     r = C.summarise(good, np.full(3, 0.2))
     assert "laplace_sd_mismatch" in r["flags"]
     r = C.summarise(dict(good, draws=good["draws"][:1], time_box_hit=True))
-    assert "single_chain" in r["flags"]
+    assert "single_chain" in r["flags"] and "not_converged" in r["flags"]
+    r = C.summarise(dict(good, diverging=[3, 0]))
+    assert "divergences" in r["flags"] and "not_converged" in r["flags"]  # a clean r-hat does not excuse divergent transitions

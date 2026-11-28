@@ -197,5 +197,7 @@ def test_image_degeneracy_flags_flat_and_edge_piled_images():
     assert P.image_degeneracy(ellipse, pix, rs, hole)["image_degenerate"] == []
     assert P.image_degeneracy(ell_edge, pix, rs, hole)["image_degenerate"][-1].startswith("edge-piled")  # inside the support circle
     assert P.image_degeneracy(flat, pix, rs, hole)["image_degenerate"][0].startswith("flat")
+    inner = (r < 0.3).astype(float)  # all the light inside the stellar hole: flagged, not a crash
+    assert P.image_degeneracy(inner, pix, rs, hole)["image_degenerate"] == ["no light outside the hole"]
     assert any(w.startswith("edge-piled") for w in P.image_degeneracy(edge, pix, rs, hole)["image_degenerate"])
     assert P.image_degeneracy(0 * ring, pix, rs, hole)["image_degenerate"] == ["empty"]

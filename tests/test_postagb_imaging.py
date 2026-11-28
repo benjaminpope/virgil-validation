@@ -285,7 +285,7 @@ def test_default_options_leave_the_output_names_unchanged():
     seen.clear()
     P.per_strategy(lambda args, out, strat: seen.append(P.TARGETS[args.target]["key"]),
                    _opts(companion="free", companion_start=(1.0, -1.3), hole_scale=0.5, geometry=(28.0, 161.0), white=(0.59, 0.84)), None)
-    assert seen == ["IW_Car_gp-polar_night_compfree_holex0.5_geo28-161_white0.59-0.84"]
+    assert seen == ["IW_Car_gp-polar_night_compfree_cs1,-1.3_holex0.5_geo28-161_white0.59-0.84"]
     assert P.TARGETS["IW_Car"]["key"] == "IW_Car"  # the table is restored
 
 
@@ -435,5 +435,6 @@ def test_companion_box_and_min_length_r_are_checked_and_named():
         with pytest.raises(SystemExit):
             P.check_options(_opts(**bad))
     sfx = P.option_suffix(_opts(companion="free", companion_start=(1.0, 0.0), companion_box=0.5, min_length_r=2.0))
-    assert sfx == "_compfree_box0.5_minlr2"
+    assert sfx == "_compfree_cs1,0_box0.5_minlr2"
+    assert sfx != P.option_suffix(_opts(companion="free", companion_start=(-1.0, 0.0), companion_box=0.5, min_length_r=2.0))  # the mirror run has its own files
     assert P.option_suffix(_opts()) == ""
