@@ -376,10 +376,17 @@ def bic(own_chi2, log_norm, k, n):
     return float(n * own_chi2 + 2.0 * log_norm + k * np.log(n))
 
 
+def chi2_rows(model, data):
+    """``(chi^2 per whitened residual row, number of rows)``: the normalization of the ladder's BIC and of its earlier results. (``P.chi2r`` now
+    divides by the independent observables, WP-03; the ladder keeps its own N so that its numbers and its BIC do not move.)"""
+    r = np.asarray(whitened_residuals(model, data))
+    return float(np.sum(r**2) / r.size), int(r.size)
+
+
 def chi2s(model, data_raw, data_arm):
     """The three chi^2 of design section 1: ``raw`` (quoted errors, independent, no gains; N its row count), ``raw_v2``, ``raw_cp`` (per point,
     from ``P.residual_stats``) and ``own`` (r.r / N under the arm's own likelihood, ``n`` rows)."""
-    raw, n_raw = P.chi2r(model, data_raw)
+    raw, n_raw = chi2_rows(model, data_raw)
     v2, t3 = P.observables(model, data_raw)
     st = P.residual_stats(data_raw, v2, t3)
     r = np.asarray(whitened_residuals(model, data_arm))
@@ -534,7 +541,7 @@ def fit_one_model(cfg, data_raw, data_arm, arm, model_id, variant=None, smoke=Fa
                 res, pri, rec = res2, priors_for(cfg, res2.model, model_id, st2, variant), dict(rec2, seconds=rec["seconds"] + rec2["seconds"], recentred=True)
         rec = dict(start=st["name"], **rec)
         if res is not None:
-            rec |= dict(values=values_of(res), raw_chi2=P.chi2r(res.model, data_raw)[0])
+            rec |= dict(values=values_of(res), raw_chi2=chi2_rows(res.model, data_raw)[0])
         recs.append(rec)
         fits.append((res, pri))
         log(f"  {model_id} {arm} {st['name']}: converged {rec['converged']} own chi2 {rec.get('own_chi2', float('nan')):.3f} {rec['seconds']:.1f} s")

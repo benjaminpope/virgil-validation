@@ -89,7 +89,14 @@ def test_binary_scene_frees_what_each_mode_says(monkeypatch):
     s, pri = P.binary_scene(scene(), cfg, _Data, "paper")
     assert pri == {} and not isinstance(s.sec, P.MovingComponent)
     _, pri = P.binary_scene(scene(), cfg, _Data, "free")
-    assert set(pri) == {"sec.dra", "sec.ddec", "sec.flux.ratio", "sec.flux.index"}
+    assert set(pri) == {"sec.dra", "sec.ddec", "sec.flux.ratio"}  # the secondary is grey in every mode: no prior on its index (decision 5)
+    for mode in ("free", "motion", "epoch"):
+        s, pri = P.binary_scene(scene(), dict(cfg, sec_index_fixed=0.0), _Data, mode)
+        assert float(np.asarray(s.sec.flux.index)) == 0.0 and "sec.flux.index" not in pri
+    s, pri = P.binary_scene(scene(), cfg, _Data, "none")
+    assert pri == {} and s.names == scene().names  # `none` changes nothing: cfg_of builds the scene without a secondary
+    s, pri = P.binary_scene(scene(), cfg, _Data, "motion", v_sigma=0.5)
+    assert float(np.asarray(pri["sec.vra"].scale)) == pytest.approx(0.5)
     s, pri = P.binary_scene(scene(), cfg, _Data, "motion")
     assert {"star.vra", "star.vdec", "sec.vra", "sec.vdec"} <= set(pri)
     assert isinstance(s.star, P.MovingComponent) and isinstance(s.sec, P.MovingComponent)
@@ -103,12 +110,13 @@ def test_binary_scene_frees_what_each_mode_says(monkeypatch):
 def test_binary_summary_reads_the_secondary_colour():
     cfg = dict(img_star_index=-2.1)  # AI Sco's SIND1: the windows are absolute, not about the primary's index
     s, sd = scene(), {"sec.flux.index": 0.2}
-    read = lambda d, sd_=sd: P.binary_summary(s.set("sec.flux.index", d), "free", cfg, sd_)["bin_sec_colour"]  # noqa: E731
+    read = lambda d, sd_=sd: P.index_colour(d, float(np.asarray(s.env.flux.index)), (sd_ or {}).get("sec.flux.index"))  # noqa: E731
+    assert P.binary_summary(s.set("sec.flux.index", -3.3), "free", cfg, sd)["bin_sec_colour"] == "fixed"  # grey in every mode: never read as a colour
     assert read(-3.3) == "photospheric" and read(-2.5) == "photospheric"
     assert read(0.3) == "dust-like" and read(-1.2) == "neither" and read(1.9) == "neither"
     assert read(-3.0, {"sec.flux.index": 0.8}) == "unconstrained" and read(-3.0, None) == "unconstrained"
     out = P.binary_summary(s, "free", cfg, sd)
-    assert out["bin_sec_index_sd"] == 0.2
+    assert out["bin_sec_index_sd"] == 0.2 and out["bin_sec_colour"] == "fixed"
 
 
 def test_binary_summary_reports_the_relative_velocity():

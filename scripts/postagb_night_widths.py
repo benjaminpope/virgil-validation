@@ -31,20 +31,7 @@ import postagb_imaging as P  # noqa: E402
 OUT = Path(__file__).with_name("postagb_night_widths.json")
 
 
-def between_cell_width(values, frames, cells):
-    """τ of a two-level ANOVA: ``values`` per sample, averaged first per ``frames`` group, then compared across ``cells``."""
-    keys = np.unique(np.stack([cells, frames], 1), axis=0)
-    frame_mean = np.array([values[(cells == c) & (frames == f)].mean() for c, f in keys])
-    means, within = [], []
-    for c in np.unique(keys[:, 0]):
-        x = frame_mean[keys[:, 0] == c]
-        if x.size >= 2:
-            means.append(x.mean())
-            within.append(x.var(ddof=1) / x.size)
-    if len(means) < 2:
-        return 0.0, len(means)
-    tau2 = np.var(means, ddof=1) - np.mean(within)
-    return float(np.sqrt(max(tau2, 0.0))), len(means)
+from postagb_noise import between_cell_width  # noqa: E402,F401  (the ANOVA helper lives with the noise model, WP-04)
 
 
 def target_widths(target, results):

@@ -161,6 +161,11 @@ def test_image_errors_are_zero_for_the_truth_and_grow_with_dots():
     assert worse["nrmse_raw"] > 0.5 and worse["nrmse_raw"] > worse["nrmse_beam"]
 
 
+def _parts(fn):
+    """A stand-in for ``evidence_parts`` whose ln Z is ``fn(fit, data)`` (the cells' fits here are fakes without a model)."""
+    return lambda f, d, path="env": dict(log_z=fn(f, d), chi2_sum=0.0, log_norm=0.0, z2=0.0, logdet=0.0, n_eff=0.0)
+
+
 @needs_multipole
 def test_polar_cells_start_every_cell_cold_and_record_its_loss_history(monkeypatch):
     starts = []
@@ -185,7 +190,7 @@ def test_polar_cells_start_every_cell_cold_and_record_its_loss_history(monkeypat
         )()
 
     monkeypatch.setattr(P, "fit", fake_fit)
-    monkeypatch.setattr(P, "log_evidence", lambda f, d: -1.0)
+    monkeypatch.setattr(P, "evidence_parts", _parts(lambda f, d: -1.0))
     monkeypatch.setattr(P, "polar_scene_fn", lambda *a: (lambda sg, lr, lt: None))
     monkeypatch.setattr(P, "image_priors", lambda sc: {})
     monkeypatch.setattr(
@@ -230,7 +235,7 @@ def test_polar_cells_never_pick_or_extend_past_the_prior_bounds(monkeypatch):
 
     monkeypatch.setattr(P, "fit", fake_fit)
     monkeypatch.setattr(
-        P, "log_evidence", lambda f, d: f.vals[0] - f.vals[1]
+        P, "evidence_parts", _parts(lambda f, d: f.vals[0] - f.vals[1])
     )  # sigma - length_r
     monkeypatch.setattr(
         P, "polar_scene_fn", lambda *a: (lambda sg, lr, lt: (sg, lr, lt))
@@ -261,7 +266,7 @@ def test_unbounded_polar_cells_reach_below_one_beam_and_above_sigma_two(monkeypa
         return type("F", (), dict(info=info, model=None, vals=scene))()
 
     monkeypatch.setattr(P, "fit", fake_fit)
-    monkeypatch.setattr(P, "log_evidence", lambda f, d: f.vals[0] - f.vals[1])
+    monkeypatch.setattr(P, "evidence_parts", _parts(lambda f, d: f.vals[0] - f.vals[1]))
     monkeypatch.setattr(
         P, "polar_scene_fn", lambda *a: (lambda sg, lr, lt: (sg, lr, lt))
     )
