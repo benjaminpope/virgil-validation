@@ -1,0 +1,14 @@
+WARNING: Overriding HOME environment variable with APPTAINERENV_HOME is not permitted
+Precompiling packages...
+   4522.8 ms  ✓ Profile (serial)
+  1 dependency successfully precompiled in 5 seconds
+[ Info: [bench] observing_geometry = false (user)
+[ Info: [bench] barycentric_lighttime = false (user)
+[ Info: Preparing model
+┌ Info: Determined number of free variables
+└   D = 11
+┌ Info: Determined number type
+└   T = Float64
+ℓπcallback(θ): 0.000025 seconds
+∇ℓπcallback(θ): 0.000032 seconds (1 allocation: 32 bytes)
+PROFILE_OCTOFITTER {"draws":1000,"per_call_us":{"logdensity":{"min_us":1.302,"median_us":1.333},"grad":{"min_us":6.032,"median_us":6.101}},"n_param":11,"case":"O-A-sim","config":"matched","versions":{"julia":"1.12.7","octofitter":"9.0.0"},"warm":{"steps_all_chains":91608.0,"note":"chains run one after another; the warm time covers warmup + draws, steps the draws only (NaN: n_steps absent from the chain)","us_per_step_all":20.83317628373068,"t_s":1.908485613},"chains":4,"julia_threads":1,"calls":500,"warmup":1000}

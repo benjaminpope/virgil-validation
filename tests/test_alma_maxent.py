@@ -105,7 +105,8 @@ def test_entropy_of_the_tapered_image_equals_the_numpy_formula():
     assert abs(bare - ref) > 1e-4 * abs(ref)
 
 
-@pytest.mark.validates("virgil_bridge.alma", roots=["mathematics"])
+@pytest.mark.slow
+@pytest.mark.validates("virgil_bridge.alma", roots=["mathematics"], tier="B")
 def test_lambda_conversion_gives_virgils_maxentropy_the_same_pull_on_the_shape():
     """C11: for images of one flux, S_M(b1) - S_M(b2) = F / (F_tot dx^2) [K(b1) - K(b2)] exactly (untapered), with K the
     relative entropy of virgil's `MaxEntropy` against a flat image: lam_F = lam_R F / (F_tot dx^2) has the same difference."""
@@ -244,7 +245,8 @@ def test_r1_the_r_objective_equals_2n_times_mpols_loss(tmp_path):
     assert 0.1 < abs(va.lam_r(n, 1e-5) * s_virgil / sc["nll"]) < 100  # -ln L is negative (constants), so compare magnitudes
 
 
-@pytest.mark.validates("virgil_bridge.alma", roots=["mpol"], kind="control")
+@pytest.mark.slow
+@pytest.mark.validates("virgil_bridge.alma", roots=["mpol"], kind="control", tier="B")
 @pytest.mark.skipif(not sp.available("mpol", "mpol"), reason="MPoL not installed (scripts/setup_external.sh mpol)")
 @pytest.mark.skipif(tm._example_commit() != tm.EXAMPLES_COMMIT, reason="MPoL-dev/examples not cloned at the pinned commit")
 def test_r1_control_virgils_maxentropy_or_the_untapered_image_does_not_match(tmp_path):
@@ -301,7 +303,8 @@ def test_r2_fit_r_falls_and_writes_its_files(syn, r_fit):
     assert np.allclose(d[::-1], img, rtol=1e-6)
 
 
-@pytest.mark.validates("virgil_bridge.alma", "virgil.fitting.fit", roots=["mathematics"])
+@pytest.mark.slow
+@pytest.mark.validates("virgil_bridge.alma", "virgil.fitting.fit", roots=["mathematics"], tier="B")
 def test_the_loss_virgil_fit_minimises_contains_lambda_s_m(syn):
     """C3 in the fit itself. `fit`'s final loss minus r_objective (-ln L + lam S_M, outside `fit`) at the same values is a constant
     (the priors' normalisation), the same at lam = 0 and lam = 1; so `fit` adds lam S_M, with the plus sign. Control: a problem
@@ -324,7 +327,8 @@ def test_the_loss_virgil_fit_minimises_contains_lambda_s_m(syn):
     assert abs(consts["without"][0] - consts["zero"][0]) > 0.5 * pen
 
 
-@pytest.mark.validates("virgil_bridge.alma", "virgil.radio.ComplexVisData.term", roots=["mathematics"])
+@pytest.mark.slow
+@pytest.mark.validates("virgil_bridge.alma", "virgil.radio.ComplexVisData.term", roots=["mathematics"], tier="B")
 def test_score_equals_the_terms_negative_log_likelihood(syn, r_fit):
     """`score` (per-point decomposition, eps 1e-12) equals 1/2 sum r^2 + log_norm + sum (ln 2 pi - ln w) of the fit's own term,
     to 1e-12 relative, with and without a mask, and its per-ddid and per-annulus tallies add up."""
@@ -436,7 +440,8 @@ def test_r3_cv_task_and_aggregate_on_two_lambdas_and_two_folds(syn, tmp_path):
     assert tot == n
 
 
-@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard")
+@pytest.mark.slow
+@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard", tier="B")
 def test_cv_task_passes_precondition_to_the_fit_and_records_it(syn, tmp_path, monkeypatch):
     """``cv-task --precondition diag`` reaches ``run_fit_c8`` (it used to be accepted and ignored)."""
     folds = tmp_path / "folds.npz"
@@ -480,7 +485,8 @@ def mock_mpol_export(fit_dir, out, *, scale_amp=1.0, tap=True):
     return out
 
 
-@pytest.mark.validates("virgil_bridge.alma", roots=["mathematics"])
+@pytest.mark.slow
+@pytest.mark.validates("virgil_bridge.alma", roots=["mathematics"], tier="B")
 def test_r4_compare_self_comparison_gives_zero_differences(syn, r_fit, tmp_path):
     """R4. ``compare`` of a fit with an MPoL export made from the same solution (mocked in W8's format: the 1028^2 grid is
     replaced by the fit's own): s = g s_M, gains, offsets, flux and the three image differences are zero and the two R objectives are equal
@@ -511,7 +517,8 @@ def test_r4_compare_self_comparison_gives_zero_differences(syn, r_fit, tmp_path)
     assert abs(c2["objective"]["mpol_solution_in_virgil"]["objective"] - c["objective"]["mpol_solution_in_virgil"]["objective"]) > 1e-6 * abs(c["objective"]["ours"]["objective"])
 
 
-@pytest.mark.validates("virgil_bridge.alma", roots=["mathematics"])
+@pytest.mark.slow
+@pytest.mark.validates("virgil_bridge.alma", roots=["mathematics"], tier="B")
 def test_r4_compare_reports_both_solutions_term_by_term_and_the_gradient_scaling(syn, r_fit, tmp_path):
     """``compare`` without ``--f-dir``/``--dsharp`` (R against MPoL alone): the per-ddid raw chi^2/N at both solutions, the objective
     term by term against MPoL's own numbers, gains and offsets side by side, and the gradient by parameter group, whose
@@ -538,7 +545,8 @@ def test_r4_compare_reports_both_solutions_term_by_term_and_the_gradient_scaling
     assert "grad_groups" not in json.loads((tmp_path / "cmp2" / "compare.json").read_text())
 
 
-@pytest.mark.validates("virgil_bridge.alma", roots=["mathematics"])
+@pytest.mark.slow
+@pytest.mark.validates("virgil_bridge.alma", roots=["mathematics"], tier="B")
 def test_mpol_init_writes_the_values_fit_init_reads_and_the_fit_starts_at_mpols_objective(syn, r_fit, tmp_path):
     """``mpol-init``: values.npz from MPoL's export equals ``values_from_mpol_export`` (image, flux, g, offsets in mas, s = g s_M);
     for an export made from our own fit it reproduces that fit's values, and ``fit --init`` of it starts at that objective and does not rise."""
@@ -559,7 +567,8 @@ def test_mpol_init_writes_the_values_fit_init_reads_and_the_fit_starts_at_mpols_
     assert res["objective_R"] <= base["objective_R"] + 1e-6 * abs(base["objective_R"])
 
 
-@pytest.mark.validates("virgil_bridge.alma", "crosscheck.alma_maxent", roots=["mathematics"])
+@pytest.mark.slow
+@pytest.mark.validates("virgil_bridge.alma", "crosscheck.alma_maxent", roots=["mathematics"], tier="B")
 def test_r4_f_against_dsharp_runs_through_compare_and_a_shifted_grid_fails(syn, r_fit, tmp_path):
     """The DSHARP step of ``compare``, run as the command: the fit's image (here the R fit's, standing in for F's) convolved to a CLEAN
     beam and written as a 4-axis restored FITS with a hand-written header (East-left CDELT1, row 0 South, the phase centre in cell

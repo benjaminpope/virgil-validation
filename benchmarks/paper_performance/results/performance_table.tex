@@ -1,0 +1,27 @@
+% performance_table.tex: tabular only (no caption). All rows 1 thread, one CPU (r2: 64-core EPYC node), no GPU; times in seconds,
+% footprints in MB (cold = import + load + init + first call of a fresh process, compilation included; warm =
+% repeated call; imaging ladder rows give the interpolated time to the stated precision, cold and warm). Limits:
+%   - one CPU (run r1: Apple-silicon laptop; run r2: one 64-core EPYC 7543 node); 1 thread primary, 2 threads at most; no code was run on all cores
+%   - no GPU row exists (CPU only)
+%   - eht-imaging with the direct transform (NFFT not installed), the same transform in virgil
+%   - Octofitter interferometry on simulated point-source data only
+%   - O-A-real is period-informed (prior from the published period) and is not scored
+%   - PMOIRED and Octofitter parallel modes not run beyond 2 workers
+% $^\dagger$ period-informed prior; not scored.
+\begin{tabular}{lrrrrrrrrrrr}
+\hline
+Task & $N_{\rm data}$ & $N_{\rm par}$ & virgil cold & virgil warm & other cold & other warm & ratio warm & ratio cold & peak virgil & peak other & accuracy \\
+\hline
+B-sim-6 T2 & 300 & 3 & 6.67 & 0.0138 & 5 & 0.026 & 1.89 & 0.749 & 921 & 194 & 0.957 / 1.07 \\
+B-sim-600 T2 & 30000 & 3 & 6.8 & 0.069 & 5.1 & 0.125 & 1.81 & 0.751 & 955 & 211 & 1.05 / 1.14 \\
+B-sim-6 T3 & 300 & 3 & 6.99 & 0.0213 & 397 & 392 & 18383 & 56.8 & 937 & 201 & 0.957 / 1.07 \\
+B-real-pionier T2 & 92 & 3 & 6.71 & 0.0136 & 4.95 & 0.0362 & 2.65 & 0.737 & 925 & 195 & 2.5 / 2.67 \\
+O-A-sim matched & 20 & 7 & 19.1 & 4.03 & 63.4 & 1.92 & 0.476 & 3.32 & 1310 & 1858 & --- \\
+O-A-real matched$^\dagger$ & 24 & 7 & 20 & 3.64 & 63.2 & 1.55 & 0.426 & 3.16 & 1325 & 1840 & --- \\
+O-B-sim matched & 1440 & 8 & 191 & 175 & 384 & 274 & 1.57 & 2.01 & 1645 & 1955 & --- \\
+I-sim-24 time to precision (J within 3\% of best) & 312 & 576 & 5.56 & 0.169 & 2.32 & 0.521 & 3.08 & 0.418 & 854 & 247 & --- \\
+I-sim-48 time to precision (J within 10\% of best) & 312 & 2304 & 6.01 & 0.667 & 4.87 & 3.07 & 4.61 & 0.811 & 861 & 265 & --- \\
+I-sim-96 time to precision (J within 10\% of best) & 312 & 9216 & 9.57 & 4.44 & 22.1 & 20.3 & 4.56 & 2.31 & 962 & 320 & --- \\
+I-sim-ring native & 312 & 2304 & 20 & 10.8 & 5.44 & 3.53 & 0.327 & 0.272 & 1008 & 264 & --- \\
+\hline
+\end{tabular}

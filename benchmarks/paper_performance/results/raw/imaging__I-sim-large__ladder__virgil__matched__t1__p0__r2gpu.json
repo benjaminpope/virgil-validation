@@ -1,0 +1,352 @@
+{
+ "case": "I-sim-large",
+ "comparison": "imaging",
+ "code": "virgil",
+ "config": "matched",
+ "threads": 1,
+ "size": "full",
+ "status": "gate_failed",
+ "t_process": 1.0660543850099202,
+ "t_calib": 0.2645412940037204,
+ "t_import": 3.9803924990119413,
+ "t_load": 0.934045319998404,
+ "t_init": null,
+ "t_cold": 2.3346549390116706,
+ "t_warm": [
+  0.06214452399581205,
+  0.0642994100053329,
+  0.06037362500501331,
+  0.06194672000128776,
+  0.060661790004814975
+ ],
+ "peak_footprint_mb": 1276.72,
+ "peak_rss_mb": 1276.72,
+ "baseline_mb": null,
+ "cpu_ratio": 1.2440884665922716,
+ "flags": [],
+ "n_data": 6750,
+ "n_param": 2304,
+ "iterations": {
+  "steps_by_budget": [
+   25,
+   50,
+   100,
+   200,
+   400,
+   800,
+   1600,
+   3200
+  ]
+ },
+ "accuracy": {
+  "ladder": [
+   {
+    "budget": 25,
+    "t_warm": [
+     0.06214452399581205,
+     0.0642994100053329,
+     0.06037362500501331,
+     0.06194672000128776,
+     0.060661790004814975
+    ],
+    "steps": 25,
+    "converged": false,
+    "stop": "limit",
+    "score": {
+     "J": 257787.52262285238,
+     "half_chi2_amp": 186622.6882771622,
+     "half_chi2_cp": 66840.55273481132,
+     "tv2": 0.0057657088145051305,
+     "flux": 1.0,
+     "n_amp": 4500,
+     "n_cp": 2250,
+     "ncc_registered": 0.8247979024270217,
+     "ncc_shift_rc": [
+      2,
+      -2
+     ],
+     "ncc_unregistered": 0.5743438209641172,
+     "rms_rel_beam": 0.09015601527182913,
+     "beam_mas": 1.5443549845383082
+    }
+   },
+   {
+    "budget": 50,
+    "t_warm": [
+     0.10216163199220318,
+     0.1023931589879794,
+     0.10236600799544249,
+     0.10060128101031296,
+     0.10037381100119092
+    ],
+    "steps": 50,
+    "converged": false,
+    "stop": "limit",
+    "score": {
+     "J": 35733.70764982781,
+     "half_chi2_amp": 20977.12105528848,
+     "half_chi2_cp": 9129.205321165897,
+     "tv2": 0.007503175031164579,
+     "flux": 1.0,
+     "n_amp": 4500,
+     "n_cp": 2250,
+     "ncc_registered": 0.7875550100420028,
+     "ncc_shift_rc": [
+      3,
+      -3
+     ],
+     "ncc_unregistered": 0.4764923938496685,
+     "rms_rel_beam": 0.10467900452788528,
+     "beam_mas": 1.5443549845383082
+    }
+   },
+   {
+    "budget": 100,
+    "t_warm": [
+     0.1993555390072288,
+     0.19753402499190997,
+     0.19881409499794245,
+     0.2115308349893894,
+     0.1999183029984124
+    ],
+    "steps": 100,
+    "converged": false,
+    "stop": "limit",
+    "score": {
+     "J": 9847.85485266604,
+     "half_chi2_amp": 4581.087229643733,
+     "half_chi2_cp": 2399.4173165746815,
+     "tv2": 0.0038231337419301677,
+     "flux": 1.0,
+     "n_amp": 4500,
+     "n_cp": 2250,
+     "ncc_registered": 0.855991711723818,
+     "ncc_shift_rc": [
+      3,
+      -3
+     ],
+     "ncc_unregistered": 0.4823956929637993,
+     "rms_rel_beam": 0.11123281298716503,
+     "beam_mas": 1.5443549845383082
+    }
+   },
+   {
+    "budget": 200,
+    "t_warm": [
+     0.3824463589990046,
+     0.3779860450013075,
+     0.3784064289939124,
+     0.38101363999885507,
+     0.38175849900289904
+    ],
+    "steps": 200,
+    "converged": false,
+    "stop": "limit",
+    "score": {
+     "J": 5138.57057510066,
+     "half_chi2_amp": 2878.9630197729857,
+     "half_chi2_cp": 1195.2226179246306,
+     "tv2": 0.0014191799165373914,
+     "flux": 1.0,
+     "n_amp": 4500,
+     "n_cp": 2250,
+     "ncc_registered": 0.9364687911317204,
+     "ncc_shift_rc": [
+      3,
+      -3
+     ],
+     "ncc_unregistered": 0.5121113791328856,
+     "rms_rel_beam": 0.11419996560425678,
+     "beam_mas": 1.5443549845383082
+    }
+   },
+   {
+    "budget": 400,
+    "t_warm": [
+     0.7590070590085816,
+     0.7498736970010214,
+     0.7515337160002673,
+     0.7501838820026023,
+     0.7552850200008834
+    ],
+    "steps": 400,
+    "converged": false,
+    "stop": "limit",
+    "score": {
+     "J": 4041.901387112529,
+     "half_chi2_amp": 2349.195985647956,
+     "half_chi2_cp": 1090.5732894887824,
+     "tv2": 0.0008028428159677205,
+     "flux": 1.0,
+     "n_amp": 4500,
+     "n_cp": 2250,
+     "ncc_registered": 0.9639488542928496,
+     "ncc_shift_rc": [
+      3,
+      -3
+     ],
+     "ncc_unregistered": 0.5089197571022609,
+     "rms_rel_beam": 0.11750671024907752,
+     "beam_mas": 1.5443549845383082
+    }
+   },
+   {
+    "budget": 800,
+    "t_warm": [
+     1.4974026980053168,
+     1.5020385750103742,
+     1.5028814090037486,
+     1.566885740001453,
+     1.502447097998811
+    ],
+    "steps": 800,
+    "converged": false,
+    "stop": "limit",
+    "score": {
+     "J": 3772.6759964488956,
+     "half_chi2_amp": 2253.026288427973,
+     "half_chi2_cp": 1068.882826322886,
+     "tv2": 0.000601022508930715,
+     "flux": 0.9999999999999999,
+     "n_amp": 4500,
+     "n_cp": 2250,
+     "ncc_registered": 0.9326416793125082,
+     "ncc_shift_rc": [
+      3,
+      -3
+     ],
+     "ncc_unregistered": 0.42297769675100055,
+     "rms_rel_beam": 0.13084194665743887,
+     "beam_mas": 1.5443549845383082
+    }
+   },
+   {
+    "budget": 1600,
+    "t_warm": [
+     2.9964974769973196,
+     2.989646530011669,
+     2.9907281350024277,
+     3.0290338569902815,
+     3.138244500005385
+    ],
+    "steps": 1600,
+    "converged": false,
+    "stop": "limit",
+    "score": {
+     "J": 3673.0522155662766,
+     "half_chi2_amp": 2240.887457882992,
+     "half_chi2_cp": 1065.8132960933308,
+     "tv2": 0.0004884686154532716,
+     "flux": 1.0,
+     "n_amp": 4500,
+     "n_cp": 2250,
+     "ncc_registered": 0.8831987646819709,
+     "ncc_shift_rc": [
+      3,
+      -3
+     ],
+     "ncc_unregistered": 0.3580922088927224,
+     "rms_rel_beam": 0.1409699500215073,
+     "beam_mas": 1.5443549845383082
+    }
+   },
+   {
+    "budget": 3200,
+    "t_warm": [
+     6.276639684991096,
+     5.917266709991964,
+     6.326201393007068,
+     6.445909275993472,
+     6.323329813996679
+    ],
+    "steps": 3200,
+    "converged": false,
+    "stop": "limit",
+    "score": {
+     "J": 3647.1955761931913,
+     "half_chi2_amp": 2238.2997000856512,
+     "half_chi2_cp": 1063.8293295465735,
+     "tv2": 0.000460088728747955,
+     "flux": 1.0,
+     "n_amp": 4500,
+     "n_cp": 2250,
+     "ncc_registered": 0.8519441550655472,
+     "ncc_shift_rc": [
+      3,
+      -3
+     ],
+     "ncc_unregistered": 0.3305031206179039,
+     "rms_rel_beam": 0.1453010570742027,
+     "beam_mas": 1.5443549845383082
+    }
+   }
+  ],
+  "ladder_J": [
+   257787.52262285238,
+   35733.70764982781,
+   9847.85485266604,
+   5138.57057510066,
+   4041.901387112529,
+   3772.6759964488956,
+   3673.0522155662766,
+   3647.1955761931913
+  ]
+ },
+ "settings": {
+  "case": "I-sim-large",
+  "task": "ladder",
+  "reps": 5,
+  "size": "full",
+  "budgets": [
+   25,
+   50,
+   100,
+   200,
+   400,
+   800,
+   1600,
+   3200
+  ],
+  "gtol": 0.0,
+  "method": "lbfgsb",
+  "memory": 50,
+  "run": "r2",
+  "jax_cache": "cold",
+  "device": "gpu",
+  "gpu": "NVIDIA A100-SXM4-80GB",
+  "reason": "gate against the neutral scorer failed: worst relative difference 0.0185 (tolerance 1e-09); see gate_results.json"
+ },
+ "provenance": {
+  "vv_commit": null,
+  "vv_dirty": false,
+  "virgil_pin": "09b268521072a83f73bc0a77defa6485db270c7b",
+  "versions": {
+   "virgil-astro": null,
+   "jax": "0.12.0.1",
+   "jaxlib": "0.12.0.1",
+   "numpyro": "0.22.0",
+   "pmoired": "26.10.1",
+   "ehtim": null,
+   "numpy": "2.5.4",
+   "scipy": "1.18.1",
+   "arviz": null,
+   "astropy": "8.0.2"
+  },
+  "python": "3.12.7",
+  "macos": "",
+  "chip": "AMD EPYC 7543 32-Core Processor",
+  "cpu_count": 64,
+  "thread_env": {
+   "OMP_NUM_THREADS": "1",
+   "OPENBLAS_NUM_THREADS": "1",
+   "VECLIB_MAXIMUM_THREADS": "1",
+   "MKL_NUM_THREADS": "1",
+   "NUMEXPR_NUM_THREADS": "1",
+   "XLA_FLAGS": "--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1 --xla_cpu_parallel_codegen_split_count=1 --xla_cpu_use_xnnpack=false --xla_cpu_enable_concurrency_optimized_scheduler=false",
+   "JAX_PLATFORMS": "cuda",
+   "JULIA_NUM_THREADS": "1"
+  },
+  "data_manifest_sha256": "9ff0c4e5432d399dab1b2db62ae15a4b3066af304147876be59a21020f540205"
+ },
+ "language": "python"
+}

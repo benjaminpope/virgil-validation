@@ -180,11 +180,12 @@ def test_modulated_rim_is_not_blurred_isotropically_on_the_sky(uvw):
         assert (err > 1e-3) if differs else (err < 1e-12)
 
 
+@pytest.mark.slow
 @pytest.mark.x64
 @pytest.mark.parametrize(
     "radius,length", [(5.0, 4.0), (15.0, 20.0), (5.0, 40.0)]
 )
-@pytest.mark.validates("virgil.models.GaussianArc", roots=["mathematics"], property="orientation")
+@pytest.mark.validates("virgil.models.GaussianArc", roots=["mathematics"], property="orientation", tier="B")
 def test_gaussian_arc_matches_untruncated_arc(uvw, radius, length):
     """The arc weight is virgil's documented von Mises function of the
     position angle, exp(kappa cos(phi - pa)) with kappa = (2 sqrt(2 ln 2)
@@ -326,9 +327,10 @@ def test_random_constellation(uvw, seed):
     assert_close(vis(u, v, wl), virgil_vis(scene, u, v, wl))
 
 
+@pytest.mark.slow
 @pytest.mark.float32
 @pytest.mark.parametrize("seed", range(3))
-@pytest.mark.validates("virgil.models.System", roots=["mathematics"])
+@pytest.mark.validates("virgil.models.System", roots=["mathematics"], tier="B")
 def test_random_constellation_float32(uvw, seed):
     """virgil's default precision: float32 throughout."""
     u, v, wl = uvw

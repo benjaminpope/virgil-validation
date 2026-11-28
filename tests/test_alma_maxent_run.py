@@ -41,7 +41,8 @@ def _state(syn, npix=32):
     return data, prob, v
 
 
-@pytest.mark.validates("virgil_bridge.alma", roots=["mathematics"])
+@pytest.mark.slow
+@pytest.mark.validates("virgil_bridge.alma", roots=["mathematics"], tier="B")
 def test_chunked_score_and_dirty_images_equal_the_unchunked_ones(syn):
     """Model evaluation in chunks of 37 points (every observation split many times, the last chunk short) gives the
     same per-point decomposition, tallies and dirty images as one call per observation, to 1e-12; and no chunk is larger
@@ -79,7 +80,8 @@ def test_chunked_score_and_dirty_images_equal_the_unchunked_ones(syn):
         assert np.allclose(d_parts[e], d_whole[e], rtol=1e-10, atol=1e-12 * np.abs(d_whole[e]).max())
 
 
-@pytest.mark.validates("virgil_bridge.alma", roots=["mathematics"])
+@pytest.mark.slow
+@pytest.mark.validates("virgil_bridge.alma", roots=["mathematics"], tier="B")
 def test_a_failed_report_loses_no_fit_and_report_recomputes_it(syn, tmp_path, monkeypatch):
     """The fit's values, image (npy and fits) and a provisional result.json (stages, loss history, complete false) are on disk
     when the reporting step raises, as the out-of-memory did on the A100; ``report`` then writes the full result, equal to the
@@ -153,7 +155,8 @@ def test_c8_loop_restarts_until_the_loss_has_stopped_moving(monkeypatch):
     assert va.run_fit_c8(None, {}, max_steps=1000, time_limit=10.0)[3] == "time_limit"
 
 
-@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"])
+@pytest.mark.slow
+@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], tier="B")
 def test_c8_loop_goes_further_than_fits_own_loose_test(syn):
     """On a real (small) problem a loose ``gtol`` makes `fit` stop with stop None well short of the minimum; the C8 loop restarts
     it and reaches a lower loss, in more than one round, with C8 true or the step budget spent."""
@@ -186,7 +189,8 @@ def test_precondition_needs_a_virgil_whose_fit_has_the_argument(syn, monkeypatch
         assert va.run_fit_c8(None, {}, max_steps=300, precondition=off)[1]["precondition"] is None
 
 
-@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard")
+@pytest.mark.slow
+@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard", tier="B")
 def test_precondition_stats_and_restarts_are_recorded(syn):
     """With a virgil that has ``precondition``, the C8 loop records the scaling's per-round stats (spread >= 0, floored
     fraction in [0, 1], at least one record per restart) and each restart's steps and wall time; without it, none."""
@@ -297,7 +301,8 @@ def test_mpol_start_reproduces_the_uniform_softplus_image_and_flux(syn):
     assert abs(va.image_of(c9, npix, px).max() / sp - 1) > 1e-3
 
 
-@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard")
+@pytest.mark.slow
+@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard", tier="B")
 def test_workflow_mpol_runs_exactly_one_stage_and_records_itself(syn, tmp_path, monkeypatch):
     calls = []
     real = va.mpol_start_values
@@ -345,7 +350,8 @@ def test_offset_bound_reaches_the_priors_and_default_is_virgils_own(syn):
             assert np.allclose(np.asarray(default.priors[k].low), np.asarray(bounded.priors[k].low))
 
 
-@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard")
+@pytest.mark.slow
+@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard", tier="B")
 def test_report_records_the_bound_and_warns_when_an_offset_is_within_5_percent_of_it(syn, tmp_path, capsys):
     out = tmp_path / "ob"
     _call("fit", "--config", "R", "--workflow", "mpol", "--data", syn, "--out", out, "--npix", 16, "--max-steps", 3, "--no-dirty", "--offset-bound-mas", 100)

@@ -42,19 +42,22 @@ def _finite(data, npix):
     return bool(np.isfinite(np.ravel(imaging.clean(data, npix, 0.4, max_iterations=3).chi2_red)).all())
 
 
-@pytest.mark.validates("virgil.imaging.clean", roots=["mathematics"], kind="regression")  # F12: finite only
+@pytest.mark.slow
+@pytest.mark.validates("virgil.imaging.clean", roots=["mathematics"], kind="regression", tier="B")  # F12: finite only
 def test_clean_is_finite_with_three_telescopes(tmp_path):
     data = _data(tmp_path, UTS[:3])
     assert all(_finite(data, n) for n in (40, 41, 60))
 
 
-@pytest.mark.validates("virgil.imaging.clean", roots=["mathematics"], kind="regression")  # F12: finite only
+@pytest.mark.slow
+@pytest.mark.validates("virgil.imaging.clean", roots=["mathematics"], kind="regression", tier="B")  # F12: finite only
 def test_clean_is_finite_with_four_telescopes(tmp_path):
     data = _data(tmp_path, UTS)
     assert all(_finite(data, n) for n in (40, 41, 60))
 
 
-@pytest.mark.validates("virgil.imaging.clean", roots=["mathematics"], kind="regression")  # F12, M111: every size that failed
+@pytest.mark.slow
+@pytest.mark.validates("virgil.imaging.clean", roots=["mathematics"], kind="regression", tier="B")  # F12, M111: every size that failed
 def test_clean_is_finite_at_every_size_that_failed_with_four_telescopes(tmp_path):
     data = _data(tmp_path, UTS)
     assert [n for n in range(34, 69, 2) if not _finite(data, n)] == []

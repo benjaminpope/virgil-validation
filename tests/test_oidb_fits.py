@@ -82,7 +82,8 @@ def test_epoch_fit_recovers_a_point_binary(of, tmp_path):
     assert 0.6 < e["scales"]["vis_scale"] < 1.6 and 0.6 < e["scales"]["phi_scale"] < 1.6
 
 
-@pytest.mark.validates("virgil.oidata.OIData", roots=["self-consistency"], kind="guard")
+@pytest.mark.slow
+@pytest.mark.validates("virgil.oidata.OIData", roots=["self-consistency"], kind="guard", tier="B")
 def test_epoch_fit_with_gains_replaces_the_v2_error_scale(of, tmp_path):
     """--gains: V^2 carry per-frame gains with fitted widths, no V^2 error scale; the position is recovered."""
     truth = dict(dra=3.0, ddec=-4.0, flux=0.3)
@@ -115,8 +116,9 @@ def _smeared_candid(ud1, dra, ddec, flux, resolved, resolving, n=101):
     return vis
 
 
+@pytest.mark.slow
 @pytest.mark.validates("virgil.models.UniformDisk", "virgil.models.System", "virgil.fitting.fit",
-                       roots=["mathematics", "standards"])
+                       roots=["mathematics", "standards"], tier="B")
 def test_candid_binary_with_smearing_recovers_flux(of, tmp_path):
     """CANDID's model with bandwidth smearing (the A-star recipe) recovers the truth;
     without smearing the same fit misses the flux ratio (the control below)."""
@@ -136,8 +138,9 @@ def test_candid_binary_with_smearing_recovers_flux(of, tmp_path):
     assert e["chi2_raw"]["all"]["chi2_red"] < 2.0
 
 
+@pytest.mark.slow
 @pytest.mark.validates("virgil.models.UniformDisk", "virgil.models.System", "virgil.fitting.fit",
-                       roots=["mathematics"], kind="control")
+                       roots=["mathematics"], kind="control", tier="B")
 def test_candid_binary_without_smearing_misses_the_flux(of, tmp_path):
     truth = dict(ud1=1.0, dra=20.0, ddec=12.0, flux=0.05, resolved=-0.03)
     path = _observe(tmp_path / "c.fits", _smeared_candid(**truth, resolving=30.0),
@@ -363,7 +366,8 @@ def test_reference_positions_agree_with_the_published_epochs(of):
     assert abs(np.hypot(*ip["2018-11-21"]) - 10.1793) < 1e-6 and abs(np.hypot(*ip["2019-08-06"]) - 1.1297) < 1e-6
 
 
-@pytest.mark.validates("pipeline:binary-orbits", roots=["standards"], kind="guard")
+@pytest.mark.slow
+@pytest.mark.validates("pipeline:binary-orbits", roots=["standards"], kind="guard", tier="B")
 def test_check_epochs_flags_nights_that_may_not_seed_the_orbits(of, tmp_path):
     """Two simulated nights of a point binary, 5 mas apart in one and 6 in the other. A night in
     ``flagged`` and a night whose best peak is closer than ``min_sep`` are barred from seeding, with

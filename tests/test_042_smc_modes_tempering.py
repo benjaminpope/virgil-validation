@@ -41,11 +41,13 @@ def _clear_jax_caches():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.slow
 @pytest.mark.validates(
     "crosscheck.smc_tempering_ref",
     roots=["mathematics"],
     kind="reference",
     headline="max_ref_err",
+    tier="B",
 )
 def test_smc_tempering_ref_against_quadrature_and_matrix_identities():
     """Verify crosscheck.smc_tempering_ref formulas against 2D SciPy numerical
@@ -710,12 +712,14 @@ def test_bridge_smc_exact_linear_gaussian_bayes_factor():
     record("bridge_cycle_err", cycle_err)
 
 
+@pytest.mark.slow
 @pytest.mark.validates(
     "virgil.smc.tempered_smc",
     "virgil.smc.bridge_smc",
     roots=["mathematics", "statistics"],
     kind="control",
     headline="unnormalized_loglike_bias",
+    tier="B",
 )
 def test_smc_unnormalized_loglike_and_swapped_bridge_controls():
     """Control: shifting loglike by +2.5 nats (omitting Gaussian normalization)

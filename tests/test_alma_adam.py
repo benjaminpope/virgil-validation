@@ -68,7 +68,8 @@ def test_method_adam_needs_a_virgil_with_the_adam_keywords(tmp_path, monkeypatch
         va.run_adam(types.SimpleNamespace(model=None, priors={}, regs=(), terms=()), {}, steps=1)
 
 
-@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard")
+@pytest.mark.slow
+@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard", tier="B")
 def test_stage_dead_pixels_are_recorded_for_lbfgs_and_adam(tmp_path, monkeypatch):
     """Each stage of an L-BFGS fit (the default, unchanged) and of an Adam fit has ``dead_pixels`` for the base and tapered images with the 1e-6 and 1e-4
     fractions and the largest live radius, and the Adam stage has its loss history verdict; compare's notes tabulate them."""
@@ -302,7 +303,8 @@ def test_snapshot_post_step_calls_the_sink_every_n_steps_and_passes_params_throu
     assert [k for k, _ in got] == [3, 6] and out is params and np.allclose(got[0][1], np.arange(4.0))
 
 
-@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard")
+@pytest.mark.slow
+@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard", tier="B")
 def test_classic_mem_arm_writes_summary_first_dots_and_the_standard_r_objective(tmp_path, monkeypatch):
     """``--taper-mas 0`` (classic MEM: no taper on the model or the entropy) still records the standard R (30 mas taper) of the final image; result.json starts with the raw chi^2/N
     and has ``dots``, the tapered peak and the flux beyond 1.8 arcsec; with Adam's snapshots (a real Adam run) the trajectory has the loss and a dots_report per snapshot."""
@@ -320,7 +322,8 @@ def test_classic_mem_arm_writes_summary_first_dots_and_the_standard_r_objective(
         assert [t["step"] for t in r["trajectory"] if t["stage"] == "all"][:2] == [50, 100] and all("dots" in t and t["loss"] is not None for t in r["trajectory"])
 
 
-@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard")
+@pytest.mark.slow
+@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard", tier="B")
 def test_real_adam_with_const_then_decay_schedule_ftol_and_snapshots(tmp_path):
     """The release arms' flags together on a real (small) Adam run: constant lr then decay, the windowed ftol, snapshots and Toeplitz-free direct chi^2; skipped on a virgil without virgil#562."""
     pytest.importorskip("optax")

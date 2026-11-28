@@ -115,7 +115,8 @@ def pm_egauss(name, fwhm, ratio, pa, flux=1.0, dra=0.0, ddec=0.0):
 # ------------------------------------------------------------ scenes
 
 
-@pytest.mark.validates("virgil.models.BinaryModelCartesian", roots=["pmoired"], headline="max_abs_dV2")
+@pytest.mark.slow
+@pytest.mark.validates("virgil.models.BinaryModelCartesian", roots=["pmoired"], headline="max_abs_dV2", tier="B")
 def test_binary(vlti_file):
     scene = vm.BinaryModelCartesian(4.97, -3.36, 0.05)
     params = {**pm_point("A"), **pm_point("B", 0.05, 4.97, -3.36)}
@@ -282,7 +283,8 @@ class _Cloud:
         return sky.visibility(self.cloud, u, v, wl)
 
 
-@pytest.mark.validates("virgil.models.ModulatedGaussianRim", roots=["pmoired", "mathematics"], kind="control")
+@pytest.mark.slow
+@pytest.mark.validates("virgil.models.ModulatedGaussianRim", roots=["pmoired", "mathematics"], kind="control", tier="B")
 def test_modulated_rim_definitions_differ(vlti_file, request):
     """With modulation the two packages define different things, both
     exactly. PMOIRED multiplies the radial profile by (1 + A cos m phi);
@@ -310,7 +312,8 @@ def test_modulated_rim_definitions_differ(vlti_file, request):
     assert_recorded_once(request, "max_abs_dV2", "max_abs_dCP_deg", "max_abs_CP_deg")
 
 
-@pytest.mark.validates("virgil.models.ModulatedGaussianRim", roots=["pmoired"], property="modulation_sense", headline="max_abs_dCP_deg")
+@pytest.mark.slow
+@pytest.mark.validates("virgil.models.ModulatedGaussianRim", roots=["pmoired"], property="modulation_sense", headline="max_abs_dCP_deg", tier="B")
 def test_modulation_sense_agrees_with_pmoired(vlti_file, request):
     """The definitions differ only at O(m^2 sigma^2 / r0^2) (D-code above),
     so the sense of the modulation can still be checked against PMOIRED:

@@ -47,10 +47,11 @@ def virgil_vis(model, u, v, wl):
 # ------------------------------------------------------- virgil's models
 
 
+@pytest.mark.slow
 @pytest.mark.x64
 @pytest.mark.parametrize("diam", [0.5, 3.0, 12.0])
 @pytest.mark.parametrize("law", list(LAWS))
-@pytest.mark.validates("virgil.models.LimbDarkenedDisk", roots=["mathematics"])
+@pytest.mark.validates("virgil.models.LimbDarkenedDisk", roots=["mathematics"], tier="B")
 def test_polynomial_laws(uvw, law, diam):
     u, v, wl = uvw
     ours = sky.visibility(limb.disk(diam, limb.polynomial(LAWS[law]), 0.4, -0.7), u, v, wl)
@@ -60,9 +61,10 @@ def test_polynomial_laws(uvw, law, diam):
     assert_close(ours, theirs)
 
 
+@pytest.mark.slow
 @pytest.mark.x64
 @pytest.mark.parametrize("q1, q2", [(0.36, 0.29), (0.9, 0.1), (0.05, 0.8), (0.5, 0.5)])
-@pytest.mark.validates("virgil.models.QuadraticLimbDarkenedDisk", roots=["mathematics"])
+@pytest.mark.validates("virgil.models.QuadraticLimbDarkenedDisk", roots=["mathematics"], tier="B")
 def test_kipping_quadratic(uvw, q1, q2):
     u, v, wl = uvw
     profile = limb.polynomial(limb.kipping_quadratic_u(q1, q2))
@@ -72,9 +74,10 @@ def test_kipping_quadratic(uvw, q1, q2):
     )
 
 
+@pytest.mark.slow
 @pytest.mark.x64
 @pytest.mark.parametrize("q1, q2", [(0.36, 0.29), (0.9, 0.1), (0.05, 0.8), (0.5, 0.5)])
-@pytest.mark.validates("virgil.models.SquareRootLimbDarkenedDisk", roots=["mathematics"])
+@pytest.mark.validates("virgil.models.SquareRootLimbDarkenedDisk", roots=["mathematics"], tier="B")
 def test_kipping_square_root(uvw, q1, q2):
     u, v, wl = uvw
     profile = limb.square_root(*limb.kipping_square_root_cd(q1, q2))
@@ -248,8 +251,9 @@ def test_render_matches_our_image():
     assert err < 1e-12
 
 
+@pytest.mark.slow
 @pytest.mark.x64
-@pytest.mark.validates("virgil.models.QuadraticLimbDarkenedDisk", "virgil.models.System", roots=["mathematics"], headline="max_abs_dV2")
+@pytest.mark.validates("virgil.models.QuadraticLimbDarkenedDisk", "virgil.models.System", roots=["mathematics"], headline="max_abs_dV2", tier="B")
 def test_pixel_image_through_oifits(tmp_path):
     """Item 2 of Issue #12: our image of an off-centre limb-darkened star
     (8x oversampled pixels) with a companion, written to OIFITS; virgil's
