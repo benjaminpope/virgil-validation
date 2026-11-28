@@ -8,7 +8,7 @@ earlier output names are unchanged. Tags are appended after the existing ones in
 | Flag | Meaning | Filename tag |
 | --- | --- | --- |
 | `white OUTDIR --target T` (stage) | Fixed pilot (arm-(a) polar GP: σ 1, ℓ_r 2 beams, ℓ_θ 1 rad, m ≤ 3) on the `scale` stage's error scale and geometry. Measures the white scales (channel scatter about a line per (frame, baseline) and (frame, triangle)) and re-measures the night widths about the pilot. Writes `<T>_white.json`: `v2_white`, `t3_white`, `n_groups_*`, `skipped_*`, `night_widths_published`, `night_widths_pilot`, `night_widths_used` (pilot where it differs from the published width by more than 30 %), `pilot_cell`, `pilot_chi2_per_point` (on the arm-(b) noise), counts | file `<T>_white.json` |
-| `--white V2,T3` or `--white FILE` | White scales of `--noise vlti|night`: two numbers, or the `white` stage's file (which also sets the night widths used) | `_white<v2>-<t3>` |
+| `--white V2,T3` or `--white FILE` | White scales of `--noise vlti|night`: two numbers, or the `white` stage's file (which also sets the night widths used) | `_white<v2>-<t3>`, plus `_wfile` when the file's night widths replaced the published ones |
 | `--inject organic` | Fit simulated data of the ORGANIC model (SPARCO + environment) on the real (u, v), errors and closure triangles | `_inj-organic_nz<white\|night>_s<seed>` |
 | `--inject organic+point:E,N,F` | As above plus a grey point source at E, N mas from the primary, flux ratio F to the primary at 1.65 µm | `_inj-orgpt-E_N_F_nz…_s…` |
 | `--inject npz:FILE` | The environment replaced by the image of an `image.npz` (`brightness`, `pixel_mas`) | `_inj-npz-<stem>_nz…_s…` |
@@ -17,6 +17,7 @@ earlier output names are unchanged. Tags are appended after the existing ones in
 | `--inject-fstar-sine AMP,PERIOD` | The truth's primary star fraction oscillates, AMP points peak, PERIOD days, one value per night (at the night's mean MJD) | `_fsine<amp>-<period>` |
 | `--m-max N` | Azimuthal cap of the polar GP (negative: none). With m ≤ 3 the ℓ_θ grid is 0.25 to 2 rad, above it 0.125 to 2 rad. `--m-max beam` is not built | `_m<N>` or `_mall` |
 | `--n-theta N` | Azimuthal nodes of the polar field (default 32). Needs `--m-max` < N / 2 | `_nt<N>` |
+| `--field-mas MAS` | Any target: the support radius, image half-width and comparison aperture are MAS (grid field 2 MAS / 0.95 as `--wide-field`; comparison half-width and aperture capped at the target's own) | `_fld<MAS>` |
 | `--polar-rmax support` | The polar grid ends at the support radius (`mask_mas`), not `mask_mas / cos i` | `_rsup` |
 | `--report-corner` | After the pick, fits (σ 4, 1 beam), (σ 2, 1 pixel), (σ 4, 1 pixel) cold at the pick's ℓ_θ; writes `corner_dlnz` and `corner_cells` (ln Z minus the pick's, split into fit, prior and Occam parts, and NCC vs the truth under `--inject`). The pick never uses them | `_corner` |
 | `--fstar free\|paper\|VALUE` | Primary star fraction at 1.65 µm: free (default), the ORGANIC header's SFLU1, or a number in (0, 1). Environment and background ratios become one `share` parameter; the secondary keeps its own prior (capped at 95 % of what f★ leaves). Writes `fstar_mode`, `fstar_target`, `fstar_fitted`, `fstar_rejected_draws` | `_fs<mode>` |
@@ -39,7 +40,7 @@ earlier output names are unchanged. Tags are appended after the existing ones in
   (beam-convolved flux where the reference is below 2 % of its peak), `common_field_half_mas` (NCC and fluxes use no area beyond the smaller field),
   `sec_physical`, `sec_implied_companion_mass_msun`, `sec_mass_ceiling_msun`; under `--inject` the reference is the truth image and the injection keys are copied.
 * `sec_physical` (D16): false when the fixed source implies a companion above 2.5 M☉ on the target's period: Kepler with the projected separation as the
-  semi-major axis, minus a 0.6 M☉ primary. Only AI Sco has a period (977 d, Bailer-Jones distance 2875 pc): the 1.75 mas source gives about 17.8 M☉, so
+  semi-major axis, minus a 0.6 M☉ primary. Only AI Sco has a period (977 d, Bailer-Jones distance 2875 pc): the 1.75 mas source gives M_tot ≈ 17.8 M☉, a companion of ≈ 17.2 M☉ (a lower bound for a circular orbit only), so
   `sec_physical` is false; other targets give `null`. Written for `--binary paper` runs only.
 
 ## Not built (cut by the scope)

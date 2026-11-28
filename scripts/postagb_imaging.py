@@ -323,6 +323,11 @@ def cfg_of(args):
     if getattr(args, "wide_field", False):  # design §12: PS Gem at 15 mas, when its stock field was 5 (now the paper's, 19)
         cfg = {k: v for k, v in cfg.items() if k != "fov_mas"} | dict(half_mas=WIDE_FIELD_MAS, half_cmp_mas=WIDE_FIELD_MAS, mask_mas=WIDE_FIELD_MAS,
                                                                 fov_override=2.0 * WIDE_FIELD_MAS / 0.95)
+    fld = getattr(args, "field_mas", None)
+    if fld is not None:  # the support radius is `fld` mas: grid field as --wide-field, comparison half-width and aperture capped at it
+        cfg = {k: v for k, v in cfg.items() if k != "fov_mas"} | dict(
+            half_mas=fld, half_cmp_mas=min(fld, cfg.get("half_cmp_mas", fld)), mask_mas=fld, cmp_mask_mas=min(fld, cfg.get("cmp_mask_mas", fld)),
+            fov_override=2.0 * fld / 0.95)
     if "fov_mas" not in cfg:
         setup(cfg)
     if "sec_index0" not in cfg and "img_star_index" not in cfg:
@@ -428,6 +433,8 @@ def option_suffix(args):
     sfx = ""
     if getattr(args, "companion", None):
         sfx += f"_comp{args.companion}"
+    if getattr(args, "field_mas", None) is not None:
+        sfx += f"_fld{args.field_mas:g}"
     if getattr(args, "companion_start", None) is not None:  # a mirror-position run must not overwrite the first
         sfx += f"_cs{args.companion_start[0]:g},{args.companion_start[1]:g}"
     if getattr(args, "companion_box", None) is not None:
@@ -439,7 +446,7 @@ def option_suffix(args):
     if getattr(args, "geometry", None) is not None:
         sfx += f"_geo{args.geometry[0]:g}-{args.geometry[1]:g}"
     if getattr(args, "white", None) is not None:
-        sfx += f"_white{args.white[0]:g}-{args.white[1]:g}"
+        sfx += f"_white{args.white[0]:g}-{args.white[1]:g}" + ("_wfile" if white_file_night(args) else "")
     # the rerun options (WP-02 to WP-08); each tag is absent at its default, so earlier names are unchanged
     if getattr(args, "inject", None) is not None:
         kind, spec = parse_inject(args.inject)
@@ -2115,8 +2122,11 @@ def inject_data(args, cfg, data0, s):
 
 def v2_chi2_by_night(model, data):
     """Sum of squared whitened V^2 residuals per night (the V^2 rows come first in ``whitened_residuals``)."""
-    group = np.unique(night_labels(data)["u_night"], return_inverse=True)[1].ravel()
-    r = np.asarray(whitened_residuals(model, data))[:group.size]
+    group = np.unique(night_labels(data)["u_night"], return_inverse=True)[1].ravel()  # one entry per V^2 sample, flagged ones included
+    vi = data.vis_index
+    if vi is not None and np.ndim(vi) > 0:
+        group = group[np.asarray(vi)]  # the whitened V^2 rows are the unflagged samples only
+    r = np.asarray(whitened_residuals(model, data))[: np.size(data.vis)]
     return [float(np.sum(r[group == k] ** 2)) for k in range(int(group.max()) + 1)]
 
 
@@ -2205,7 +2215,7 @@ def image_one(args, out, strat):
                           fstar_night_v2_chi2=v2_chi2_by_night(model, data_s), fstar_night_v2_chi2_without=v2_chi2_by_night(zero, data_s),
                           fstar_night_prior=dict(zip(("sd_points", "bound_points"), FSTAR_NIGHT_PRIOR[args.target])))
 
-    extra = dict(strategy=strat, noise=args.noise, gp_mean=args.mean, noise_model=None if args.noise == "current" else (NIGHTW if args.noise == "nightw" else effective_noise_widths(cfg, getattr(args, "white", None)) | (night_widths(cfg) if args.noise == "night" else {})), error_scale=s, rotation_deg=rot, hole_mas=hole_mas, hole_rule="max(lambda_min/(2 B_max), UD diameter)",
+    extra = dict(strategy=strat, noise=args.noise, gp_mean=args.mean, noise_model=None if args.noise == "current" else (NIGHTW if args.noise == "nightw" else effective_noise_widths(cfg, getattr(args, "white", None)) | ((white_file_night(args) or night_widths(cfg)) if args.noise == "night" else {})), error_scale=s, rotation_deg=rot, hole_mas=hole_mas, hole_rule="max(lambda_min/(2 B_max), UD diameter)",
                  n_blanked=int((~support).sum()), star_index=cfg.get("img_star_index", -4.0), ud_fixed_mas=cfg["ud_fix"],
                  bound_warnings=bound_warnings(model, priors | ({"res.flux.ratio": dist.LogUniform(1e-3, 0.3 * f_env0)} if strat == "disc+res" else {})),
                  sec_treatment=("PMOIRED position/flux prior, index fixed at the paper's SIND2, no window inside the primary hole"
@@ -2279,7 +2289,8 @@ def image_one(args, out, strat):
     if getattr(args, "geometry", None) is not None:
         summary |= dict(geometry_source="--geometry")
     if getattr(args, "white", None) is not None:
-        summary |= dict(white_override=list(args.white))
+        summary |= dict(white_override=list(args.white), night_widths_from_white_file=white_file_night(args) is not None,
+                        night_widths_used=white_file_night(args) or (night_widths(cfg) if args.noise == "night" else None))
     if getattr(args, "hole_scale", None) is not None:
         summary |= dict(hole_scale=args.hole_scale)
     if getattr(args, "companion_box", None) is not None:
@@ -2695,14 +2706,14 @@ PRIMARY_MASS = 0.6  # Msun: a post-AGB primary
 
 def implied_companion_mass(sep_mas, orbit, primary=PRIMARY_MASS):
     """The companion mass (Msun) a source at ``sep_mas`` implies if the star's period is orbital: Kepler's third law with the projected
-    separation as the semi-major axis, M_tot = (d sep)^3 / P^2 (AU, years), minus the primary. A lower bound on the companion."""
+    separation as the semi-major axis, M_tot = (d sep)^3 / P^2 (AU, years), minus the primary. A lower bound on the companion for a circular orbit only (on an eccentric orbit seen near apastron the projected separation can exceed a)."""
     a_au = float(sep_mas) * float(orbit["dist_pc"]) / 1000.0
     return a_au**3 / (float(orbit["period_d"]) / 365.25) ** 2 - primary
 
 
 def sec_physical(target, sep_mas):
     """``(sec_physical, implied companion mass)``: False when the fixed source implies a companion above ``SEC_MASS_CEILING`` (AI Sco's 1.75 mas
-    PMOIRED source on its 977 d period implies about 18 Msun); ``(None, None)`` for a target without a period or without a secondary."""
+    PMOIRED source on its 977 d period implies a companion of about 17 Msun); ``(None, None)`` for a target without a period or without a secondary."""
     if target not in ORBIT or sep_mas is None:
         return None, None
     m = implied_companion_mass(sep_mas, ORBIT[target])
@@ -3277,6 +3288,9 @@ def main():
     p.add_argument("--wide-field", action="store_true",
                    help="image, support and comparison half-widths of WIDE_FIELD_MAS (15 mas) in place of the target's own "
                         "(design §12, when PS Gem's was 5 mas); written as <target>_<strategy>_..._wide_*")
+    p.add_argument("--field-mas", type=float, default=None, metavar="MAS",
+                   help="any target: the support radius, image half-width and comparison aperture are MAS (grid field 2 MAS / 0.95, as --wide-field; "
+                        "the comparison half-width and aperture are capped at the target's own); written as ..._fld<MAS>")
     p.add_argument("--unbounded", action="store_true",
                    help="gp-polar: the evidence over the whole grid, without the prior bounds (diagnostic); written as ..._unbounded_*")
     p.add_argument("--companion", default=None, choices=("fixed", "free"),

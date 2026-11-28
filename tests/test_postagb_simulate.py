@@ -56,6 +56,8 @@ def truth():
 
 
 def test_white_and_night_truth_chi2_per_independent_observable_is_one():
+    """Self-consistency only: virgil draws and virgil whitens, so a mistake common to both would pass. The statistical check of the
+    closure covariance is the test below, against an independent numpy construction."""
     d = toy4()
     for noise in ("white", "night"):
         chi = [N.simulate(CFG, truth(), noise=noise, seed=s, data0=d).truth_chi2 for s in range(20)]
@@ -82,11 +84,10 @@ def test_closure_noise_between_triangles_sharing_a_baseline_is_a_third_of_the_va
     off = ~np.eye(4, dtype=bool)
     assert np.all(np.abs(np.abs(corr_expected[first, first][off]) - 1 / 3) < 1e-12)
     np.testing.assert_allclose(corr[first, first][off], corr_expected[first, first][off], atol=0.06)
-    # the independent-per-triangle control: what the earlier injections drew has no such correlation, and the hook is not that
-    rng = np.random.default_rng(0)
-    indep = rng.normal(size=(2000, 4))
-    assert np.abs(np.corrcoef(indep, rowvar=False)[off.nonzero()]).max() < 0.1
-    assert np.abs(corr[first, first][off]).min() > 0.2
+    # the negative control goes through ``simulate``: independent noise per triangle (what the earlier injections drew) would have zero
+    # off-diagonal correlation, and the hook's draws are not that
+    wrong = np.eye(4)
+    assert not np.allclose(corr[first, first][off], wrong[off], atol=0.06)
 
 
 def test_same_seed_same_data_different_seed_different_data():

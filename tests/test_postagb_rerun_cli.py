@@ -253,3 +253,37 @@ def test_compare_extras_scores_an_image_against_itself_perfectly():
     m = P.compare_extras(img, img, conv, conv, scale, bm, ij, hdr, {}, mask)
     assert m["ncc_native"] == pytest.approx(1.0) and m["ncc_beam_total"] == pytest.approx(1.0, abs=1e-6)
     assert m["flux_in_2mas"]["ours"] == m["flux_in_2mas"]["reference"] and m["flux_outside_reference_support"] < 0.05
+
+
+def test_night_v2_chi2_uses_the_unflagged_rows_when_samples_are_flagged(monkeypatch):
+    # four V^2 samples, the second flagged: the whitened V^2 block holds samples 0, 2, 3 and the closure rows follow it
+    data = types.SimpleNamespace(vis_index=np.array([0, 2, 3]), vis=np.zeros(3))
+    monkeypatch.setattr(P, "night_labels", lambda d: {"u_night": np.array([0, 0, 1, 1])})
+    monkeypatch.setattr(P, "whitened_residuals", lambda m, d: np.array([1.0, 2.0, 3.0, 100.0, 100.0]))
+    assert P.v2_chi2_by_night(None, data) == [1.0, 4.0 + 9.0]  # sample 0 in night 0; samples 2 and 3 in night 1; no closure row
+    data.vis_index = None
+    data.vis = np.zeros(4)
+    monkeypatch.setattr(P, "whitened_residuals", lambda m, d: np.array([1.0, 2.0, 3.0, 4.0, 100.0]))
+    assert P.v2_chi2_by_night(None, data) == [5.0, 25.0]  # nothing flagged: as before
+
+
+def test_white_file_night_widths_are_recorded_and_tagged(tmp_path):
+    wj = dict(night_widths_used={k: 0.123 for k in P.NIGHT_KEYS})
+    plain = ns(noise="night", white=(1.1, 1.2))
+    filed = ns(noise="night", white=(1.1, 1.2), white_json=wj)
+    assert P.white_file_night(plain) is None and P.white_file_night(filed) == {k: 0.123 for k in P.NIGHT_KEYS}
+    assert P.option_suffix(plain) != P.option_suffix(filed) and P.option_suffix(filed).endswith("_wfile")
+
+
+def test_field_mas_sets_the_support_and_is_tagged(monkeypatch):
+    monkeypatch.setattr(P, "setup", lambda cfg: cfg.setdefault("fov_mas", 0.0))  # the geometry needs the data; only the field keys matter here
+    base = dict(P.TARGETS["HR4049"])
+    try:
+        cfg = P.cfg_of(ns(target="HR4049", field_mas=25.0))
+        assert cfg["mask_mas"] == 25.0 and cfg["half_mas"] == 25.0 and cfg["fov_override"] == pytest.approx(50.0 / 0.95)
+        assert cfg["cmp_mask_mas"] == 25.0 and cfg["half_cmp_mas"] == 25.0
+        small = P.cfg_of(ns(target="HR4049", field_mas=10.0))
+        assert small["cmp_mask_mas"] == 10.0 and small["half_cmp_mas"] == 10.0  # capped at the field
+    finally:
+        P.TARGETS["HR4049"] = base
+    assert P.option_suffix(ns(field_mas=25.0)) == "_fld25" and P.option_suffix(ns()) == ""
