@@ -48,8 +48,9 @@ jobs:
           # summaries in trust/campaigns and stamp each summary's virgil_commit into
           # their record, so a campaign is shown at the commit it ran on.
           scripts/fetch_ci_evidence.sh ci
-          extra=$(for f in ci/full/evidence.jsonl ci/full/virgil-evidence.jsonl; do [ -f "$f" ] && echo "--evidence $f"; done)
+          extra=$(for f in ci/full/evidence.jsonl ci/full/virgil-evidence.jsonl; do if [ -f "$f" ]; then echo "--evidence $f"; fi; done)  # not `[ ] && echo`: its status 1 would stop the step (bash -e) when the last file is absent
           .venv/bin/python scripts/trust.py --strict-provenance --evidence ci/push/evidence.jsonl $extra \
+            --weekly-source ci/full.source.json \
             --virgil virgil-src \
             --out docs/index.md --json docs/assets/trust.json \
             --findings docs/method/findings.md --coverage docs/method/coverage.md --tests docs/tests/index.md

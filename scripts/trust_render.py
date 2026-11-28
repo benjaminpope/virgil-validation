@@ -419,6 +419,26 @@ def _headline_html(verified, total, stale, commits, refs_ok, refs_total):
             f'{refs_ok} of {refs_total} verified.</div></div>')
 
 
+def _weekly_html(weekly):
+    """Which weekly or manual run supplied the slow tests' evidence, or why none did; None (not asked) prints nothing.
+    ``weekly`` is what scripts/fetch_ci_evidence.sh wrote to full.source.json."""
+    if weekly is None:
+        return ""
+    if weekly.get("run_id"):
+        run = f'run {e(weekly["run_id"])}'
+        if weekly.get("url"):
+            run = f'<a href="{e(weekly["url"])}">{run}</a>'
+        return f'<div class="vt-muted">Weekly evidence from {e(str(weekly.get("date", ""))[:10])}, {run}.</div>'
+    why = {"too_old": lambda w: f'the newest weekly run (run {e(w.get("ignored_run"))}) is {e(w.get("age_days"))} days old, '
+                                f'past the {e(w.get("max_age_days"))}-day limit',
+           "no_evidence": lambda w: f'the newest weekly run (run {e(w.get("ignored_run"))}) produced none',
+           "provenance": lambda w: f'the newest weekly run (run {e(w.get("ignored_run"))}) is left out of this build: '
+                                   f'it ran on uncommitted code or on a commit outside this branch',
+           }.get(weekly.get("reason"), lambda w: "there is no weekly run yet")(weekly)
+    return (f'<div class="vt-muted">No weekly evidence: {why}. The tests that run only weekly show as unchecked, '
+            f"and virgil's own CI evidence is missing.</div>")
+
+
 def _headline_by_order_html(tests):
     """A warning when a check shows a number chosen by recording order, not by its test (no ``headline=``)."""
     if not tests:
@@ -477,6 +497,7 @@ def render(model, base=""):
         "[How this works](method/index.md).\n",
         '<div class="vt">',
         _headline_html(counts.get("verified", 0), total, stale, commits, refs_ok, len(refs)),
+        _weekly_html(model.get("weekly")),
         _headline_by_order_html(model.get("headline_by_order", [])),
         _fails_elsewhere_html(model.get("fails_elsewhere", [])),
         _bar(counts, total),

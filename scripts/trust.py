@@ -96,6 +96,19 @@ def provenance_problem(run, repo=ROOT):
     return None if ok else f"ran on {commit[:7]}, which is not in this branch's history"
 
 
+def weekly_status(source, runs):
+    """What the page says about the weekly run: the content of ``source`` (the full.source.json that
+    fetch_ci_evidence.sh wrote), or None when it does not exist. A run that ``load_evidence`` left out
+    (``--strict-provenance``: uncommitted code, or a commit outside this branch) is not shown as used."""
+    source = pathlib.Path(source)
+    if not source.is_file():
+        return None
+    weekly = json.loads(source.read_text())
+    if weekly.get("run_id") and not any(str(r.get("github_run_id")) == str(weekly["run_id"]) for r in runs):
+        return {"run_id": None, "reason": "provenance", "ignored_run": weekly["run_id"], "date": weekly.get("date")}
+    return weekly
+
+
 def load_evidence(paths, strict=False, virgil=None):
     """Runs and test records. A test that appears in several runs keeps only
     its newest outcome, so an old pass cannot outlive a newer skip or failure.
@@ -1021,7 +1034,7 @@ from trust_render import (  # noqa: E402,F401
     ICON, ORDER, COLOURS, _bar, _legend, _value, _pipeline_card, _chain, _tooltip, layers, _fails_badge, _map,
     _matrix, _link_label, _ledger, FINDING_GROUPS, render_findings, render_coverage, LAYER_SECTION, test_sections,
     render_tests, _precision, _tables, SHOWCASE, _headline_html, _headline_by_order_html, _fails_elsewhere_html,
-    render, _skyline,
+    _weekly_html, render, _skyline,
 )
 e = trust_render.e  # not in the import above: build() uses `e` as a loop variable, which ruff flags against an import
 
@@ -1039,6 +1052,9 @@ def main():
     ap.add_argument("--virgil", type=pathlib.Path, default=None)
     ap.add_argument("--strict-provenance", action="store_true",
                     help="leave out runs on uncommitted code or on commits outside this branch (the published page)")
+    ap.add_argument("--weekly-source", default=None,
+                    help="full.source.json that scripts/fetch_ci_evidence.sh wrote for the weekly run (CI: ci/full.source.json), "
+                         "which says which run was used or why none was. Without it the page says nothing about the weekly run.")
     ap.add_argument("--out", default=ROOT / "docs" / "index.md")
     ap.add_argument("--index", default=None, help="also write the page here (the site's home page)")
     ap.add_argument("--json", default=None)
@@ -1052,6 +1068,9 @@ def main():
     runs, records = load_evidence(args.evidence, strict=args.strict_provenance, virgil=virgil)
     model = build(graph, ledger, records, runs, virgil)
     model["docs"] = resolve_docs(graph)
+    model["weekly"] = None  # not asked: the page says nothing (display only; no verdict reads it)
+    if args.weekly_source:
+        model["weekly"] = weekly_status(args.weekly_source, runs)
     out, index = pathlib.Path(args.out), pathlib.Path(args.index) if args.index else None
     docs_root = ROOT / "docs"
     for path in [out] + ([index] if index else []):

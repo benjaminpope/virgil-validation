@@ -168,3 +168,32 @@ def test_function_tests_section_missing_is_an_error(tmp_path):
     (tmp_path / "mkdocs.yml").write_text("nav:\n  - Overview: index.md\n")
     with pytest.raises(ValueError):
         trust.test_sections(tmp_path / "mkdocs.yml")
+
+
+@pytest.mark.validates("evidence", roots=["standards"], kind="guard")
+def test_page_says_which_weekly_run_supplied_the_slow_tests_or_why_none_did(model):
+    assert "eekly evidence" not in trust.render(model)  # not asked
+    page = trust.render({**model, "weekly": {"run_id": 50, "date": "2026-11-23T03:00:00Z", "vv_commit": "beef050",
+                                              "url": "https://github.com/o/r/actions/runs/50"}})
+    assert 'Weekly evidence from 2026-11-23, <a href="https://github.com/o/r/actions/runs/50">run 50</a>.' in page
+    page = trust.render({**model, "weekly": {"run_id": None, "reason": "too_old", "ignored_run": 40, "age_days": 10, "max_age_days": 9}})
+    assert "No weekly evidence: the newest weekly run (run 40) is 10 days old, past the 9-day limit." in page
+    assert "show as unchecked, and virgil" in page and "own CI evidence is missing" in page
+    page = trust.render({**model, "weekly": {"run_id": None, "reason": "no_evidence", "ignored_run": 60}})
+    assert "the newest weekly run (run 60) produced none" in page
+    assert "run 70) is left out of this build" in trust.render(
+        {**model, "weekly": {"run_id": None, "reason": "provenance", "ignored_run": 70}})
+    assert "there is no weekly run yet" in trust.render({**model, "weekly": {"run_id": None, "reason": "none"}})
+
+
+@pytest.mark.validates("evidence", roots=["standards"], kind="guard")
+def test_a_weekly_run_that_strict_provenance_left_out_is_not_shown_as_used(tmp_path):
+    src = tmp_path / "full.source.json"
+    assert trust.weekly_status(src, []) is None  # no file: the page says nothing
+    used = {"run_id": 50, "date": "2026-11-23T03:00:00Z", "vv_commit": "beef050", "url": "u"}
+    src.write_text(json.dumps(used))
+    assert trust.weekly_status(src, [{"github_run_id": "50"}]) == used
+    assert trust.weekly_status(src, [{"github_run_id": "300"}]) == {  # load_evidence dropped run 50
+        "run_id": None, "reason": "provenance", "ignored_run": 50, "date": "2026-11-23T03:00:00Z"}
+    src.write_text(json.dumps({"run_id": None, "reason": "too_old"}))
+    assert trust.weekly_status(src, []) == {"run_id": None, "reason": "too_old"}
