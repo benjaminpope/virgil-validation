@@ -126,7 +126,7 @@ def _style(colours):
 
 
 def _legend(counts, order, icons, words, n_marks=(0, 0)):
-    """Verdict keys (counts are parts of virgil only), then a key for each corner mark that occurs."""
+    """Verdict keys (counts are every square drawn), then a key for each corner mark that occurs."""
     items = []
     for v in order:
         if counts.get(v):
@@ -215,8 +215,12 @@ def skyline_html(model, roots, base="", *, names):
         sq = (f'<rect class="sq k-{_e(n["verdict"])}" x="{sx}" y="{sy:.0f}" width="{CELL}" height="{CELL}" rx="2">'
               f'<title>{_e(title)}</title></rect>{marks}')
         doc = docs.get(n["id"])
+        # data-node lets docs/assets/trust.js select the part's cone; a square with no page is a bare <g> that the
+        # script makes focusable, so without JavaScript it is only a coloured square with a tooltip
         if doc:
-            sq = f'<a href="{_e(base + t.doc_url(doc))}" aria-label="{_e(title)}">{sq}</a>'
+            sq = f'<a href="{_e(base + t.doc_url(doc))}" aria-label="{_e(title)}" data-node="{_e(n["id"])}">{sq}</a>'
+        else:
+            sq = f'<g data-node="{_e(n["id"])}" aria-label="{_e(title)}">{sq}</g>'
         out.append(sq)
     # ground line and the dashed divider after the references column
     out.append(f'<rect x="{LEFT - 8}" y="{ground}" width="{width - LEFT - RIGHT + 8}" height="3" fill="currentColor" fill-opacity=".75"/>')
@@ -236,13 +240,13 @@ def skyline_html(model, roots, base="", *, names):
             cx = col_x[layer] + cols[layer] * PITCH / 2
             r = max(3.0, MAX_R * (count / biggest) ** 0.5)  # area follows the count, the largest filling MAX_R
             tip = f'{count} {layer} part{"s" if count != 1 else ""} with a counted check against {names[c].lower()}'
-            out.append(f'<g><title>{_e(tip)}</title><circle cx="{cx - 12:.1f}" cy="{yy}" r="{r:.1f}" fill="currentColor" fill-opacity=".55"/>'
+            out.append(f'<g data-c="{_e(c)}" data-l="{_e(layer)}" data-n="{count}"><title>{_e(tip)}</title><circle cx="{cx - 12:.1f}" cy="{yy}" r="{r:.1f}" fill="currentColor" fill-opacity=".55"/>'
                        f'<text x="{cx - 12 + r + 4:.1f}" y="{yy + 4}" font-size="10.5" class="mut" fill="currentColor">{count}</text></g>')
 
-    # the legend counts parts of virgil only, as the headline and the bar at the top of the page do
+    # the legend counts every square drawn (parts of virgil and reference nodes), so it matches the figure and the paper's
     ours = [n for n in nodes.values() if n["id"].startswith("virgil.")]
-    verdict_counts = collections.Counter(n["verdict"] for n in ours)
-    n_marks = (sum(1 for n in ours if n.get("changed")), sum(1 for n in ours if n.get("fails_elsewhere")))
+    verdict_counts = collections.Counter(n["verdict"] for n in nodes.values())
+    n_marks = (sum(1 for n in nodes.values() if n.get("changed")), sum(1 for n in nodes.values() if n.get("fails_elsewhere")))
     desc = (f"{len(ours)} parts of virgil and {len(nodes) - len(ours)} reference nodes, one square each, in columns by layer "
             "and stacked by dependency depth, standing on a matrix of the classes of root each layer was checked against.")
     svg = (
@@ -256,7 +260,7 @@ def skyline_html(model, roots, base="", *, names):
         + _legend(verdict_counts, t.ORDER, t.ICON, verdict_words, n_marks)
         + '<div class="vt-sky-scroll" role="region" aria-label="Skyline of every part; scrolls sideways on a small screen" tabindex="0">'
         + svg + "</div>"
-        '<p class="vt-muted">One square per part, linked to the page that checks it; the counts above are parts of virgil, and the references column is counted in the headline. Columns are layers; height is dependency depth, '
+        f'<p class="vt-muted">One square per part, linked to the page that checks it; the counts above are every square drawn: {len(ours)} parts of virgil and {len(nodes) - len(ours)} reference nodes. Columns are layers; height is dependency depth, '
         "the longest chain of parts beneath it, so depth 0 relies on no other part. Under the ground line, the number of parts in each "
         "layer with at least one counted check against that class of root.</p></div>"
     )

@@ -2,6 +2,7 @@
 
 import importlib.util
 import pathlib
+import re
 import xml.etree.ElementTree as ET
 
 import pytest
@@ -157,7 +158,7 @@ def test_unlisted_root_is_not_lost():
 
 def test_legend_has_the_verdict_words_icons_and_counts():
     out, tree = render()
-    for v, n in {"verified": 3, "unchecked": 1, "relies-unverified": 1, "bug": 1}.items():
+    for v, n in {"verified": 4, "unchecked": 1, "relies-unverified": 1, "bug": 1}.items():
         assert f"{trust.VERDICTS[v][0]} ({n})" in out
         assert trust.ICON[v] in out
     assert trust.VERDICTS["partly"][0] not in out  # only verdicts that occur
@@ -204,10 +205,12 @@ def test_references_column_keeps_its_layer_name_and_depth_zero_claims_no_roots()
     assert "depth 0 relies on no other part" in out and "stands on the roots" not in out
 
 
-def test_legend_counts_parts_of_virgil_not_reference_nodes():
-    out, _ = render()
-    assert f"{trust.VERDICTS['verified'][0]} (3)" in out  # pmoired.fit is a reference node, not counted
-    assert "1 reference nodes" in out
+def test_legend_counts_every_square_drawn_references_included():
+    out, tree = render()
+    assert f"{trust.VERDICTS['verified'][0]} (4)" in out  # pmoired.fit is a reference square, drawn and counted
+    assert "6 parts of virgil and 1 reference nodes" in out
+    words = {v: trust.VERDICTS[v][0] for v in ("verified", "unchecked", "relies-unverified", "bug")}
+    assert sum(int(re.search(rf"{re.escape(w)} \((\d+)\)", out).group(1)) for w in words.values()) == len(squares(tree))
 
 
 def test_render_alias_folds_into_the_foundation():
