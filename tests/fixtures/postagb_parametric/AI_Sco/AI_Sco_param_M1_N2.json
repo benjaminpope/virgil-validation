@@ -1,0 +1,59 @@
+{
+ "target": "AI_Sco",
+ "commits": {
+  "scripts": "fe70d142b7d5847495b417b5d5d16c6e367daae0",
+  "virgil": "d0f7086f662e55e1c1786e4db7b4dfddb3bd2afb",
+  "virgil_version": "0.4.1"
+ },
+ "model": "M1",
+ "arm": "N2",
+ "variant": null,
+ "k": 10,
+ "n_points": null,
+ "modes": [
+  {
+   "values": {
+    "bg.flux.ratio": 0.15536008806659976,
+    "env.flux.index": -0.8834761987752398,
+    "env.flux.ratio": 0.35692125764536164,
+    "env.inc": 66.8159172626855,
+    "env.pa": 96.64083827298718,
+    "env.profile.radius": 0.600000011076302,
+    "env.profile.sigma": 1.2486795596931564,
+    "sec.ddec": -1.4491929204689322,
+    "sec.dra": -1.216889969131726,
+    "sec.flux.ratio": 0.06119673223568793
+   },
+   "sd": {
+    "env.flux.ratio": null,
+    "env.flux.index": null,
+    "bg.flux.ratio": null,
+    "sec.flux.ratio": null,
+    "sec.dra": null,
+    "sec.ddec": null,
+    "env.inc": null,
+    "env.pa": null,
+    "env.profile.radius": null,
+    "env.profile.sigma": null
+   },
+   "lnZ_lap": "-Infinity",
+   "lnZ_scene_rule": -1059.3216536642833,
+   "bic": 2131.883137107942,
+   "eligible": false,
+   "why_not": [
+    "E2: at_bound ['env.profile.radius']",
+    "E2: env.profile.radius within 1 % of a prior bound (radius floor: this is M0)",
+    "E3: Hessian not positive definite or non-finite sds"
+   ],
+   "flags": [],
+   "n_starts": 21,
+   "start": "grid_i65_p120_r1.4"
+  }
+ ],
+ "best": null,
+ "n_unconverged": 0,
+ "seconds": 84.71015501022339,
+ "error_scale": 1.3382009980304672,
+ "error_scale_source": "/Users/benpope/code/ozstar_scripts-postagb-noise/results/postagb_noise/out/15b154a+6fa8afe/AI_Sco/AI_Sco_gp-polar_unbounded_image.json",
+ "smoke": false
+}
