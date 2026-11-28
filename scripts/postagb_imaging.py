@@ -309,6 +309,8 @@ def image_degeneracy(bright, pix, support_mas, hole_mas):
     depth = ndimage.distance_transform_edt(field) * pix  # distance to the field's boundary
     use = field & (r >= hole_mas)
     bs = b[use]
+    if bs.size == 0 or bs.max() <= 0:  # all the light is inside the stellar hole
+        return dict(img_flat_frac=None, img_edge_frac=None, image_degenerate=["no light outside the hole"])
     flat = float(np.mean(bs > 0.5 * bs.max()))
     edge = float(bs[depth[use] < 0.15 * depth.max()].sum() / bs.sum())
     why = ([f"flat ({flat:.2f} of the field above half the peak)"] if flat > DEGENERATE_FLAT_FRAC else []) + (
@@ -426,6 +428,8 @@ def option_suffix(args):
     sfx = ""
     if getattr(args, "companion", None):
         sfx += f"_comp{args.companion}"
+    if getattr(args, "companion_start", None) is not None:  # a mirror-position run must not overwrite the first
+        sfx += f"_cs{args.companion_start[0]:g},{args.companion_start[1]:g}"
     if getattr(args, "companion_box", None) is not None:
         sfx += f"_box{args.companion_box:g}"
     if getattr(args, "min_length_r", None) is not None:
@@ -1201,7 +1205,7 @@ def scene_evidence(fit_result, data, priors):
     for p in extra:
         val = np.asarray(model.get(p), float)
         pr = priors[p]
-        normal = type(pr).__name__ == "Normal"
+        normal = type(pr).__name__ in ("Normal", "TruncatedNormal")  # a truncated Normal keeps its prior precision (the truncation is far in the tails)
         lam.append(np.broadcast_to(1.0 / np.asarray(pr.scale, float) ** 2, val.shape).ravel() if normal else np.zeros(val.size))
         names += [p] if val.ndim == 0 else [f"{p}[{i}]" for i in range(val.size)]
         log_p += float(np.sum(np.asarray(pr.log_prob(val), float))) + 0.5 * val.size * np.log(2.0 * np.pi)

@@ -17,7 +17,7 @@ except ImportError:
     P = Q = C = None
 
 pytestmark = [pytest.mark.skipif(P is None, reason="virgil without MultipoleDisk (install the postagb extra)"),
-              pytest.mark.validates("evidence", roots=["mathematics"], kind="guard")]
+              pytest.mark.validates("evidence", roots=["self-consistency"], kind="guard")]
 
 
 @pytest.fixture(autouse=True)
