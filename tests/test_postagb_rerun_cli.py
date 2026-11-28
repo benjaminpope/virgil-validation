@@ -287,3 +287,38 @@ def test_field_mas_sets_the_support_and_is_tagged(monkeypatch):
     finally:
         P.TARGETS["HR4049"] = base
     assert P.option_suffix(ns(field_mas=25.0)) == "_fld25" and P.option_suffix(ns()) == ""
+
+
+def test_a_truncated_normal_secondary_ratio_is_capped_at_what_fstar_leaves():
+    import numpyro.distributions as dist
+
+    pri = {"env.flux.ratio": dist.Uniform(0.01, 5.0), "bg.flux.ratio": dist.Uniform(0.0, 2.0),
+           "sec.flux.ratio": dist.TruncatedNormal(0.43, 0.2, low=0.0)}  # HD 95767's PMOIRED ratio, left-truncated only
+    sc, pri2 = P.fix_fstar(sparco(f_sec=0.43), pri, 0.85)  # f* = 0.85 leaves R = 0.176: the prior's mean is beyond it
+    cap = 0.95 * 0.15 / 0.85
+    assert float(pri2["sec.flux.ratio"].high) == pytest.approx(cap)
+    assert float(np.asarray(sc.sec.flux.ratio)) < cap and P.fstar_of(sc) == pytest.approx(0.85, abs=1e-6)
+    assert not bool(sc.set("sec.flux.ratio", 0.2).is_physical())  # no room left for the environment: not a scene
+    assert bool(sc.set("sec.flux.ratio", 0.1).is_physical())
+
+
+def test_nightflux_refuses_a_wavelength_array_that_is_not_the_samples():
+    star = P.UniformDisk(diam=0.4, flux=P.PowerLaw(1.0, -4.0, L0))
+    nf = P.NightFlux(star, [0, 0, 1], 0.6, flux=star.flux, d=np.array([0.01, -0.01]))
+    assert float(nf._weight(L0)) == pytest.approx(float(star._weight(L0)))  # a scalar wavelength: the common weight
+    with pytest.raises(ValueError):
+        nf._weight(np.array([1.6e-6, 1.7e-6]))
+
+
+def test_bound_warnings_look_at_every_night_of_a_per_night_parameter():
+    import numpyro.distributions as dist
+
+    model = types.SimpleNamespace(star=types.SimpleNamespace(d=np.array([0.0, 0.0599, 0.0])))
+    w = P.bound_warnings(model, {"star.d": dist.TruncatedNormal(jnp_zeros(3), 0.03, low=-0.06, high=0.06)})
+    assert w == ["star.d[1] at its upper bound"]
+
+
+def jnp_zeros(n):
+    import jax.numpy as jnp
+
+    return jnp.zeros(n)

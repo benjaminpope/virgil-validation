@@ -192,18 +192,21 @@ def channel_groups(frame, key, wavel):
     return np.split(order, cut)
 
 
-def channel_scatter(resid, groups, min_channels=WHITE_MIN_CHANNELS):
-    """Pooled rms of ``resid`` (in units of the quoted error) about a straight line in channel number, fitted per group: the mean and the
-    slope of a group carry its gain, its offset and the smooth misfit of the pilot, so only the channel-to-channel scatter is left. The
-    degrees of freedom of the two fitted terms are taken out (n - 2 per group). Returns ``(rms, n_groups_used, n_groups_skipped)``."""
+def channel_scatter(resid, groups, wavel, sigma, min_channels=WHITE_MIN_CHANNELS):
+    """Pooled rms of ``resid`` (in units of the quoted error ``sigma``) about a straight line in wavelength, fitted per group in the physical
+    residual sigma x resid (weights 1/sigma^2): the constant and the slope of a group carry its gain, its offset and the smooth misfit of the
+    pilot, so only the channel-to-channel scatter is left. In the standardized residuals that is the projection orthogonal to the columns
+    [1/sigma, (wavel - mean)/sigma], which stays exact when sigma varies across the channels or an interior channel is flagged. The degrees of
+    freedom of the two fitted terms are taken out (n - 2 per group). Returns ``(rms, n_groups_used, n_groups_skipped)``."""
+    resid, wavel, sigma = (np.asarray(a, float) for a in (resid, wavel, sigma))
     ss, dof, used, skipped = 0.0, 0, 0, 0
     for g in groups:
         if len(g) < min_channels:
             skipped += 1
             continue
-        x = np.arange(len(g), dtype=float)
-        y = np.asarray(resid, float)[g]
-        y = y - np.polyval(np.polyfit(x, y, 1), x)
+        w, sg, y = wavel[g], sigma[g], resid[g]
+        design = np.stack([1.0 / sg, (w - w.mean()) / sg], 1)
+        y = y - design @ np.linalg.lstsq(design, y, rcond=None)[0]
         ss += float(y @ y)
         dof += len(g) - 2
         used += 1
@@ -221,8 +224,8 @@ def white_scales(data, res_v2, res_t3, min_channels=WHITE_MIN_CHANNELS):
     base = np.unique(st, axis=0, return_inverse=True)[1].ravel()
     i1, i2, i3 = (np.asarray(i, int) for i in (data.i_cps1, data.i_cps2, data.i_cps3))
     tri = np.unique(np.sort(np.concatenate([st[i1], st[i2], st[i3]], 1), axis=1), axis=0, return_inverse=True)[1].ravel()
-    v2, nv, sv = channel_scatter(res_v2, channel_groups(frame[vi], base[vi], wavel[vi]), min_channels)
-    t3, nt, stt = channel_scatter(res_t3, channel_groups(frame[i1], tri, wavel[i1]), min_channels)
+    v2, nv, sv = channel_scatter(res_v2, channel_groups(frame[vi], base[vi], wavel[vi]), wavel[vi], np.asarray(data.d_vis, float), min_channels)
+    t3, nt, stt = channel_scatter(res_t3, channel_groups(frame[i1], tri, wavel[i1]), wavel[i1], np.asarray(data.d_phi, float), min_channels)
     return dict(v2_white=v2, t3_white=t3, n_groups_v2=nv, n_groups_t3=nt, skipped_v2=sv, skipped_t3=stt)
 
 

@@ -1030,6 +1030,10 @@ class FixedFstar(System):
     def remainder(self):
         return self.R - (self.parts[self.names.index("sec")].flux.ratio if "sec" in self.names else 0.0)
 
+    def is_physical(self):
+        """A draw with no room left for the environment (``remainder`` <= 0) is not a scene."""
+        return super().is_physical() & (self.remainder() > 0.0)  # traceable: the sampler calls this under jit
+
     def resolved(self):
         base = System.resolved(self)
         parts, names = list(base.parts), base.names
@@ -1065,9 +1069,16 @@ def fix_fstar(scene, priors, target):
     """``(scene, priors)`` with f* fixed at ``target`` (see ``FixedFstar``); the env and bg ratio priors are replaced by ``share``."""
     sc = FixedFstar(scene, (1.0 - target) / target)
     pri = {k: v for k, v in priors.items() if k not in ("env.flux.ratio", "bg.flux.ratio")}
-    sec = pri.get("sec.flux.ratio")
-    if sec is not None and getattr(sec, "high", None) is not None and float(sec.high) >= 0.95 * (1.0 - target) / target:
-        pri["sec.flux.ratio"] = dist.LogUniform(float(sec.low), 0.95 * (1.0 - target) / target)  # the secondary cannot take more than what f* leaves
+    sec, cap = pri.get("sec.flux.ratio"), 0.95 * (1.0 - target) / target
+    if sec is not None and getattr(sec, "high", None) is not None and float(sec.high) >= cap:
+        if float(sec.low) >= cap:
+            raise SystemExit(f"--fstar {target:g}: the secondary's flux-ratio prior starts at {float(sec.low):g}, above what f* leaves ({cap:g})")
+        pri["sec.flux.ratio"] = dist.LogUniform(float(sec.low), cap)  # the secondary cannot take more than what f* leaves
+    elif sec is not None and getattr(sec, "high", None) is None and hasattr(sec, "base_dist"):  # a left-truncated Normal (the PMOIRED ratio)
+        b = sec.base_dist
+        pri["sec.flux.ratio"] = dist.TruncatedNormal(float(b.loc), float(b.scale), low=0.0, high=cap)
+        if float(np.asarray(sc.parts[sc.names.index("sec")].flux.ratio)) >= cap:
+            sc = sc.set("sec.flux.ratio", 0.5 * cap)  # start inside the prior's support
     if "bg" in scene.names:
         e, b = float(np.asarray(scene.env.flux.ratio)), float(np.asarray(scene.bg.flux.ratio))
         sc = sc.set("share", e / (e + b))
@@ -1096,8 +1107,10 @@ class NightFlux(Component):
 
     def _weight(self, wavel=None):
         w = flux_at(self.flux, wavel)
-        if wavel is None or np.shape(wavel) != (len(self.group),):
+        if wavel is None or np.ndim(wavel) == 0:
             return w
+        if np.shape(wavel) != (len(self.group),):
+            raise ValueError(f"NightFlux: wavel has shape {np.shape(wavel)}, the nights are defined for {len(self.group)} samples")
         return w * jnp.exp(jnp.asarray(self.d)[jnp.asarray(self.group)] / (self.f_ref * (1.0 - self.f_ref)))
 
     def model(self, u, v, wavel):
@@ -1212,8 +1225,9 @@ def scene_evidence(fit_result, data, priors):
     for p in extra:
         val = np.asarray(model.get(p), float)
         pr = priors[p]
-        normal = type(pr).__name__ in ("Normal", "TruncatedNormal")  # a truncated Normal keeps its prior precision (the truncation is far in the tails)
-        lam.append(np.broadcast_to(1.0 / np.asarray(pr.scale, float) ** 2, val.shape).ravel() if normal else np.zeros(val.size))
+        base = getattr(pr, "base_dist", pr)  # numpyro's TruncatedNormal is a truncated wrapper (not named "Normal") around a Normal
+        normal = type(base).__name__ == "Normal"  # a truncated Normal keeps its prior precision (the truncation is far in the tails)
+        lam.append(np.broadcast_to(1.0 / np.asarray(base.scale, float) ** 2, val.shape).ravel() if normal else np.zeros(val.size))
         names += [p] if val.ndim == 0 else [f"{p}[{i}]" for i in range(val.size)]
         log_p += float(np.sum(np.asarray(pr.log_prob(val), float))) + 0.5 * val.size * np.log(2.0 * np.pi)
     lam = np.concatenate(lam)
@@ -1798,7 +1812,8 @@ def ncc_to_truth(truth, bright, pix, data, cfg):
     bm = compare_beam(data)
     a, b = np.asarray(convolve_beam(grid / grid.sum(), scale, bm)), np.asarray(convolve_beam(img / img.sum(), scale, bm))
     yy, xx = np.mgrid[:n, :n]
-    return ncc(a, b, np.hypot(xx - (n - 1) / 2, yy - (n - 1) / 2) * scale < cfg.get("cmp_mask_mas", cfg["mask_mas"]))
+    common_half = min(np.shape(bright)[0] * float(pix) / 2, n * float(scale) / 2)  # as ``compare_one``: never beyond the smaller of the two fields
+    return ncc(a, b, np.hypot(xx - (n - 1) / 2, yy - (n - 1) / 2) * scale < min(cfg.get("cmp_mask_mas", cfg["mask_mas"]), common_half))
 
 
 def report_corner(cfg, scene, start_env, support, priors, data, args, geo, r_min, m_max, pick, pick_cell):
@@ -2015,17 +2030,20 @@ def bound_warnings(model, priors, tol=0.01):
             v = model
             for part in key.split("."):
                 v = getattr(v, part)
-            v = float(np.ravel(np.asarray(v))[0])
+            vs = np.ravel(np.asarray(v, float))
         except Exception:  # noqa: BLE001 - a prior on something that is not a plain scalar of the model
             continue
-        lo, hi = float(np.ravel(np.asarray(lo))[0]), float(np.ravel(np.asarray(hi))[0])
-        if "LogUniform" in type(pr).__name__ and v > 0 and lo > 0:
-            v, lo, hi = np.log(v), np.log(lo), np.log(hi)
-        span = hi - lo
-        if v - lo < tol * span:
-            out.append(f"{key} at its lower bound")
-        elif hi - v < tol * span:
-            out.append(f"{key} at its upper bound")
+        los = np.broadcast_to(np.ravel(np.asarray(lo, float)), vs.shape)  # a per-night parameter (star.d) has one value, and bound, per night
+        his = np.broadcast_to(np.ravel(np.asarray(hi, float)), vs.shape)
+        for i, (v, lo_, hi_) in enumerate(zip(vs, los, his)):
+            name = key if vs.size == 1 else f"{key}[{i}]"
+            if "LogUniform" in type(pr).__name__ and v > 0 and lo_ > 0:
+                v, lo_, hi_ = np.log(v), np.log(lo_), np.log(hi_)
+            span = hi_ - lo_
+            if v - lo_ < tol * span:
+                out.append(f"{name} at its lower bound")
+            elif hi_ - v < tol * span:
+                out.append(f"{name} at its upper bound")
     return out
 
 
@@ -2179,6 +2197,12 @@ def image_one(args, out, strat):
         raise SystemExit("--binary is for gp-polar only (design §12)")
     if (f_target is not None or getattr(args, "fstar_night", False)) and strat != "gp-polar":
         raise SystemExit("--fstar and --fstar-night are for gp-polar only")
+    if sim is not None and args.noise != "night":  # arm (a): the MacKay factor found on this draw, as the scale stage does on the real data: on the
+        # base SPARCO scene, before the --binary / --fstar* transforms, so the variants fitted to one draw share one error scale (their evidences compare)
+        base_pri = image_priors(scene) | scene_priors(cfg, scene) | chrom_pri | (companion_priors(args) if companion else {})
+        s, pilot_c2 = pilot_error_scale(scene, start, support, base_pri, sim.data, args)
+        data_s = sim.data.with_error_scale(s)
+        print(f"inject: pilot GP chi2/pt {pilot_c2:.3f}; error scale found {s:.3f} (drawn at {sim.meta['scale_drawn']:.3f}, truth needs {sim.meta['scale_fitted']:.3f})", flush=True)
     scene, bin_pri = binary_scene(scene, cfg, data_s, binary, getattr(args, "binary_v_sigma", None))
     priors = image_priors(scene) | scene_priors(cfg, scene) | chrom_pri | bin_pri | (companion_priors(args) if companion else {})
     if getattr(args, "fstar_night", False):  # one f* offset per night about the common value (plan 1.6)
@@ -2186,10 +2210,6 @@ def image_one(args, out, strat):
         priors |= fn_pri
     if f_target is not None:  # f* fixed: the env and background ratios share what the secondary leaves (WP-06)
         scene, priors = fix_fstar(scene, priors, f_target)
-    if sim is not None and args.noise != "night":  # arm (a): the MacKay factor found on this draw, as the scale stage does on the real data
-        s, pilot_c2 = pilot_error_scale(scene, start, support, priors, sim.data, args)
-        data_s = sim.data.with_error_scale(s)
-        print(f"inject: pilot GP chi2/pt {pilot_c2:.3f}; error scale found {s:.3f} (drawn at {sim.meta['scale_drawn']:.3f}, truth needs {sim.meta['scale_fitted']:.3f})", flush=True)
     has_sec = cfg["sec0"] is not None and cfg.get("secondary", True)
     if strat == "mem":
         model, curve_arrays, extra_gp = fit_mem(cfg, scene, priors, data_s, args)
@@ -2202,6 +2222,7 @@ def image_one(args, out, strat):
         d_env = json.load(open(mem_json))["env_index"] if mem_json.exists() else 0.0
         model, curve_arrays, extra_gp = fit_disc(cfg, data_s, args, geo, hole_mas, f_env0, d_env, float(env.pixel_scale_mas), env.log_brightness.shape[0])
 
+    bound_w = bound_warnings(model, priors | ({"res.flux.ratio": dist.LogUniform(1e-3, 0.3 * f_env0)} if strat == "disc+res" else {}))  # before .plain(): ``share`` lives on the FixedFstar
     fstar_rec = dict(fstar_mode=getattr(args, "fstar", "free"), fstar_target=f_target, fstar_fitted=fstar_of(model))
     if isinstance(model, FixedFstar):  # from here on an ordinary System with the resolved ratios
         fstar_rec["fstar_rejected_draws"] = int(float(np.asarray(model.remainder())) <= 1e-9)  # 1: the secondary took all the room (a -inf prior draw)
@@ -2217,7 +2238,7 @@ def image_one(args, out, strat):
 
     extra = dict(strategy=strat, noise=args.noise, gp_mean=args.mean, noise_model=None if args.noise == "current" else (NIGHTW if args.noise == "nightw" else effective_noise_widths(cfg, getattr(args, "white", None)) | ((white_file_night(args) or night_widths(cfg)) if args.noise == "night" else {})), error_scale=s, rotation_deg=rot, hole_mas=hole_mas, hole_rule="max(lambda_min/(2 B_max), UD diameter)",
                  n_blanked=int((~support).sum()), star_index=cfg.get("img_star_index", -4.0), ud_fixed_mas=cfg["ud_fix"],
-                 bound_warnings=bound_warnings(model, priors | ({"res.flux.ratio": dist.LogUniform(1e-3, 0.3 * f_env0)} if strat == "disc+res" else {})),
+                 bound_warnings=bound_w,
                  sec_treatment=("PMOIRED position/flux prior, index fixed at the paper's SIND2, no window inside the primary hole"
                                 if cfg.get("sec_index_fixed") is not None else None),
                  star_index_source=cfg.get("star_index_source", "SPARCO convention (-4)"), sec_index_source=cfg.get("sec_index_source"),
@@ -2228,9 +2249,9 @@ def image_one(args, out, strat):
         extra["star_index"] = extra["chrom_star_index"]  # fitted under --chrom (star_index_source keeps the window's centre)
     if binary != "paper":
         extra |= binary_summary(model, binary, cfg, extra.get("scene_sd"), data_s)
-        extra["sec_treatment"] = (f"--binary {binary}: position Normal(sec0, {BINARY_POS_SIGMA_MAS:g} mas), flux and index free"
+        extra["sec_treatment"] = (f"--binary {binary}: position Normal(sec0, {BINARY_POS_SIGMA_MAS:g} mas), flux free, grey (index fixed at the paper's SIND2)"
                                   + ("" if binary == "free" else f", both stars moving against the disc ({binary})")) if has_sec else f"--binary {binary}: no secondary"
-        extra["sec_index_source"] = "fitted" if has_sec else None
+        extra["sec_index_source"] = "fixed: grey (the paper's SIND2, 0)" if has_sec else None
     c2, n = chi2r(model, data_s)
     pix = float(env.pixel_scale_mas)
     bright_grid = render_env(model, strat, np.shape(env.log_brightness), pix)
@@ -2761,11 +2782,17 @@ def compare_extras(grid, pub, ours_c, pub_c, scale, bm, ij, hdr, cfg, mask):
     ``*_c`` at the comparison beam ``bm``); ``ij`` is ``image.json``; ``hdr`` the ORGANIC header (None when the reference is an injected file)."""
     f_env = (ij["f_env_pct"] or 0.0) / 100.0
     stars = [(ij["f_prim_pct"] / 100.0, 0.0, 0.0)] + ([(ij["f_sec_pct"] / 100.0, ij["sec_dra"], ij["sec_ddec"])] if ij.get("f_sec_pct") else [])
+    if ij.get("comp_flux_pct"):  # --companion fixed|free: the fitted point source is a star of the display too
+        stars.append((ij["comp_flux_pct"] / 100.0, ij["comp_dra"], ij["comp_ddec"]))
     ours_d = display_blob(grid, f_env, stars, scale, bm.minor_mas)
     out = dict(display_blob_fwhm_mas=float(bm.minor_mas))
     if hdr is not None:
         f1, f2 = hdr["SFLU1"], hdr["SFLU2"]
         ref_stars = [(f1, 0.0, 0.0)] + ([(f2, hdr["SDEX2"], hdr["SDEY2"])] if f2 > 0 else [])
+        inj = str(ij.get("inject") or "")
+        if inj.startswith("organic+point:"):  # the injected grey point source: flux F x the primary's, at (E, N)
+            e_, n_, f_ = (float(v) for v in inj.split(":", 1)[1].split(","))
+            ref_stars.append((f_ * f1, e_, n_))
         pub_d = display_blob(pub, 1.0 - f1 - f2 - hdr.get("SFLU3", 0.0), ref_stars, scale, bm.minor_mas)
         out["ncc_beam_total"] = ncc(np.asarray(convolve_beam(ours_d, scale, bm)), np.asarray(convolve_beam(pub_d, scale, bm)), mask)
     out |= dict(ncc_native=ncc(grid, pub, mask), flux_in_1mas=dict(ours=flux_within(grid, scale, 1.0), reference=flux_within(pub, scale, 1.0)),
@@ -2823,11 +2850,14 @@ def compare_one(args, out):
     m_ours = {k: region_metrics(ours_c, pub_scale, *v) for k, v in regions.items()}
     m_pub = {k: region_metrics(pub_c, pub_scale, *v) for k, v in regions.items()}
     pub_model = published_scene(cfg)
+    injected = bool(img_json.get("inject"))
     c2_pub, n_pts = chi2r(pub_model, data)
     flips = {}
     for name, im in {"as_published": pub, "mirrored_East-West": pub[:, ::-1], "mirrored_North-South": pub[::-1, :]}.items():
         env = Image.from_brightness(im, pub_scale, floor=0.0, flux=pub_model.env.flux)
         flips[name] = chi2r(pub_model.set("env", env), data)[0]
+    if injected:  # the fit was to simulated data and ``data`` here are the real observables: those chi2 would compare unlike things
+        c2_pub, flips = None, {}
     res = dict(
         ncc_zero_shift=ncc(ours_c, pub_c, mask), ncc_controls=ncc_controls, ncc_best_shift=shifts[best],
         best_shift_pixels=dict(dy=best[0], dx=best[1]), pixel_mas=pub_scale, beam=dict(
@@ -2836,11 +2866,12 @@ def compare_one(args, out):
         comparison_radius_mas=float(cfg.get("cmp_mask_mas", cfg["mask_mas"])),  # the NCC and disc-moment aperture (HR 4049: 25 mas, the fit support is 40)
         virgil_data_beam=dict(major_mas=beam(data).major_mas, minor_mas=beam(data).minor_mas, pa_deg=beam(data).pa_deg),
         ours=m_ours, published=m_pub, chi2_per_point_published_on_our_data=c2_pub,
-        chi2_per_point_ours=img_json["chi2_per_point"], n_points=n_pts,
+        chi2_per_point_ours=img_json["chi2_per_point"], n_points=n_pts, **data_counts(data),  # chi2_per_point divides by n_independent, not n_points
+        chi2_on_real_data_skipped="injection: the fit was to simulated data" if injected else None,
         published_orientation_chi2=flips, smoke=img_json["smoke"],
         ncc_beam=ncc(ours_c, pub_c, mask), common_field_half_mas=float(common_half),
     )
-    res |= compare_extras(grid, pub, ours_c, pub_c, pub_scale, bm, img_json, None if injected_file else hdr, cfg, mask)
+    res |= compare_extras(grid, pub, ours_c, pub_c, pub_scale, bm, img_json, hdr, cfg, mask)  # an npz injection keeps the header's stars (inject_truth)
     phys, m_comp = sec_physical(args.target, img_json.get("sec_sep_mas")) if img_json.get("binary", "paper") == "paper" else (None, None)
     res |= dict(sec_physical=phys, sec_implied_companion_mass_msun=m_comp, sec_mass_ceiling_msun=SEC_MASS_CEILING if phys is not None else None)
     res |= {k: img_json[k] for k in ("inject", "inject_noise", "seed", "truth_chi2", "scale_drawn", "scale_fitted", "nights_dropped") if k in img_json}

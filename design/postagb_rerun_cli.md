@@ -40,7 +40,7 @@ earlier output names are unchanged. Tags are appended after the existing ones in
   (beam-convolved flux where the reference is below 2 % of its peak), `common_field_half_mas` (NCC and fluxes use no area beyond the smaller field),
   `sec_physical`, `sec_implied_companion_mass_msun`, `sec_mass_ceiling_msun`; under `--inject` the reference is the truth image and the injection keys are copied.
 * `sec_physical` (D16): false when the fixed source implies a companion above 2.5 M☉ on the target's period: Kepler with the projected separation as the
-  semi-major axis, minus a 0.6 M☉ primary. Only AI Sco has a period (977 d, Bailer-Jones distance 2875 pc): the 1.75 mas source gives M_tot ≈ 17.8 M☉, a companion of ≈ 17.2 M☉ (a lower bound for a circular orbit only), so
+  semi-major axis, minus a 0.6 M☉ primary. `ORBIT` tabulates only AI Sco's period (the 977 d RVb period; the other targets have published orbital periods that D16 has not tabulated, so they give `null` for now; Bailer-Jones distance 2875 pc): the 1.75 mas source gives M_tot ≈ 17.8 M☉, a companion of ≈ 17.2 M☉ (a lower bound for a circular orbit only), so
   `sec_physical` is false; other targets give `null`. Written for `--binary paper` runs only.
 
 ## Not built (cut by the scope)

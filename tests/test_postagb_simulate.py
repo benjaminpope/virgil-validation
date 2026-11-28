@@ -162,3 +162,30 @@ def test_pilot_widths_replace_published_ones_only_beyond_thirty_percent():
     assert N.night_widths_used(pub, near) == pub
     assert N.night_widths_used(pub, far) == far
     assert N.night_widths_used(dict(night_gain_baseline=0.0, night_t3_offset_deg=2.0), far)["night_gain_baseline"] == 0.05  # a zero width is replaced
+
+
+def test_channel_scatter_ignores_a_physical_offset_and_slope_when_errors_vary_and_a_channel_is_missing():
+    """The quoted errors are U-shaped across six channels, every group has its own physical offset and wavelength slope, and in every other
+    group an interior channel is flagged. An unweighted line in channel number on the standardized residuals does not remove such a trend
+    (and is biased high); the weighted projection does."""
+    rng = np.random.default_rng(5)
+    wl_all = 1.5e-6 + 0.1e-6 * np.arange(6)
+    sig_all = 0.02 * np.array([3.0, 1.5, 1.0, 1.0, 1.5, 3.0])
+    scale, groups, wl, sig, y = 0.7, [], [], [], []
+    n = 0
+    for k in range(400):
+        keep = np.arange(6) if k % 2 == 0 else np.array([0, 1, 3, 4, 5])  # an interior channel dropped in half of the groups
+        w, sg = wl_all[keep], sig_all[keep]
+        phys = rng.normal(0, 0.05) + rng.normal(0, 0.05) * (w - w.mean()) / 0.1e-6 + scale * sg * rng.normal(size=keep.size)
+        groups.append(np.arange(n, n + keep.size))
+        wl.append(w), sig.append(sg), y.append(phys / sg)
+        n += keep.size
+    wl, sig, y = np.concatenate(wl), np.concatenate(sig), np.concatenate(y)
+    rms, used, skipped = N.channel_scatter(y, groups, wl, sig)
+    assert used == 400 and skipped == 0 and rms == pytest.approx(scale, rel=0.05)
+    naive_ss, naive_dof = 0.0, 0
+    for g in groups:
+        x = np.arange(len(g), dtype=float)
+        r = y[g] - np.polyval(np.polyfit(x, y[g], 1), x)
+        naive_ss, naive_dof = naive_ss + r @ r, naive_dof + len(g) - 2
+    assert np.sqrt(naive_ss / naive_dof) > 1.3 * scale  # the old estimator is far off on the same data
